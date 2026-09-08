@@ -1,6 +1,6 @@
 /** Cliente HTTP da API. Nenhum segredo mora aqui — a chave de IA fica no servidor. */
 
-import type { ConfiguracaoPublica, Evento, Job } from './tipos'
+import type { ConfiguracaoPublica, DadosDoAtalho, Evento, Job } from './tipos'
 
 export class ErroDaApi extends Error {
   constructor(
@@ -37,6 +37,8 @@ async function pedir<T>(caminho: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   configuracao: () => pedir<ConfiguracaoPublica>('/api/config'),
+
+  atalho: () => pedir<DadosDoAtalho>('/api/atalho/chave'),
 
   entrar: (senha: string) =>
     pedir<{ authenticated: boolean }>('/api/auth/login', {

@@ -136,3 +136,51 @@ describe('tela da timeline', () => {
     })
   })
 })
+
+describe('atalho do iPhone', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  function responder(corpo: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(corpo), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })),
+    )
+  }
+
+  it('mostra o passo a passo com a chave escondida', async () => {
+    const { AtalhoIphone } = await import('../componentes/AtalhoIphone')
+    responder({
+      disponivel: true,
+      chave: 'a'.repeat(40),
+      cabecalho: 'x-decifra-chave',
+      urlPreparar: 'https://app.exemplo/api/atalho/preparar',
+      urlConcluir: 'https://app.exemplo/api/atalho/concluir',
+    })
+
+    render(<AtalhoIphone />)
+    await waitFor(() => expect(screen.getByText('Enviar direto do WhatsApp (iPhone)')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver o passo a passo' }))
+
+    expect(screen.getByText('•'.repeat(40))).toBeInTheDocument()
+    expect(screen.queryByText('a'.repeat(40))).not.toBeInTheDocument()
+    expect(screen.getByText('https://app.exemplo/api/atalho/preparar')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mostrar' }))
+    expect(screen.getByText('a'.repeat(40))).toBeInTheDocument()
+  })
+
+  it('explica o que falta quando o servidor não tem o segredo configurado', async () => {
+    const { AtalhoIphone } = await import('../componentes/AtalhoIphone')
+    responder({ disponivel: false, motivo: 'Falta definir APP_SESSION_SECRET no servidor.' })
+
+    render(<AtalhoIphone />)
+    await waitFor(() =>
+      expect(screen.getByText(/Falta definir APP_SESSION_SECRET/)).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: 'Ver o passo a passo' })).not.toBeInTheDocument()
+  })
+})

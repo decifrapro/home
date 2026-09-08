@@ -29,6 +29,7 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 - [Custo](#custo)
 - [Trocar os modelos de IA](#trocar-os-modelos-de-ia)
 - [Instalar como aplicativo](#instalar-como-aplicativo)
+- [Enviar direto do WhatsApp no iPhone](#enviar-direto-do-whatsapp-no-iphone)
 - [Publicar](#publicar)
 - [Apagar um atendimento](#apagar-um-atendimento)
 - [Limites](#limites)
@@ -59,6 +60,43 @@ instalar programas assim. Sem ele, o áudio do WhatsApp ainda é transcrito — 
 
 Você escolhe preenchendo (ou não) as variáveis do Supabase. Sem elas, o sistema
 usa disco e banco locais; com elas, passa a usar o Supabase.
+
+---
+
+## Enviar direto do WhatsApp no iPhone
+
+No Android, um aplicativo instalado pela tela de início pode aparecer no botão
+Compartilhar. No iPhone isso não existe: a Apple só deixa aparecer ali um
+aplicativo publicado na App Store.
+
+A saída, sem loja e sem custo, é o app **Atalhos**, que já vem no iPhone. Um
+atalho montado uma vez aparece no Compartilhar como se fosse um aplicativo. Aí o
+uso fica assim:
+
+```
+WhatsApp → Exportar conversa (com mídia) → Compartilhar → Decifra Pro → pronto
+```
+
+Não precisa abrir o aplicativo, nem salvar em Arquivos, nem procurar o arquivo.
+O iPhone avisa por notificação o que foi recebido, e o processamento começa
+sozinho — sem passar pela tela de confirmação de custo, porque não há ninguém
+olhando para confirmar. Quem segura o gasto continua sendo o `MAX_JOB_COST_USD`.
+
+**Como montar:** abra o Decifra Pro, na tela inicial, no cartão *Enviar direto do
+WhatsApp (iPhone)* → **Ver o passo a passo**. Ali estão a sua chave pessoal e a
+sequência exata de ações, com os endereços já preenchidos. Leva uns cinco
+minutos, uma vez só.
+
+**Sobre a chave:** ela vale como senha — quem a tiver pode mandar conversas para
+o seu aplicativo. Ela é derivada do `APP_SESSION_SECRET` do servidor, não fica
+guardada em lugar nenhum, e trocar esse segredo invalida a chave antiga (é assim
+que se revoga). Sem `APP_SESSION_SECRET` definido, o cartão explica que falta
+configurar isso em vez de entregar uma chave que mudaria sozinha.
+
+**Por dentro**, o atalho faz três chamadas: pede um endereço de envio
+(`/api/atalho/preparar`), manda o arquivo direto para o armazenamento e avisa que
+terminou (`/api/atalho/concluir`). O arquivo nunca passa pela função da Vercel,
+então o limite de tamanho de requisição não atrapalha.
 
 ---
 
@@ -291,6 +329,43 @@ O aplicativo mostra essa instrução no primeiro acesso; ela é dispensável e n
 bloqueia o uso.
 
 **Desktop (Chrome/Edge)** — ícone de instalar na barra de endereço.
+
+---
+
+## Enviar direto do WhatsApp no iPhone
+
+No Android, um aplicativo instalado pela tela de início pode aparecer no botão
+Compartilhar. No iPhone isso não existe: a Apple só deixa aparecer ali um
+aplicativo publicado na App Store.
+
+A saída, sem loja e sem custo, é o app **Atalhos**, que já vem no iPhone. Um
+atalho montado uma vez aparece no Compartilhar como se fosse um aplicativo. Aí o
+uso fica assim:
+
+```
+WhatsApp → Exportar conversa (com mídia) → Compartilhar → Decifra Pro → pronto
+```
+
+Não precisa abrir o aplicativo, nem salvar em Arquivos, nem procurar o arquivo.
+O iPhone avisa por notificação o que foi recebido, e o processamento começa
+sozinho — sem passar pela tela de confirmação de custo, porque não há ninguém
+olhando para confirmar. Quem segura o gasto continua sendo o `MAX_JOB_COST_USD`.
+
+**Como montar:** abra o Decifra Pro, na tela inicial, no cartão *Enviar direto do
+WhatsApp (iPhone)* → **Ver o passo a passo**. Ali estão a sua chave pessoal e a
+sequência exata de ações, com os endereços já preenchidos. Leva uns cinco
+minutos, uma vez só.
+
+**Sobre a chave:** ela vale como senha — quem a tiver pode mandar conversas para
+o seu aplicativo. Ela é derivada do `APP_SESSION_SECRET` do servidor, não fica
+guardada em lugar nenhum, e trocar esse segredo invalida a chave antiga (é assim
+que se revoga). Sem `APP_SESSION_SECRET` definido, o cartão explica que falta
+configurar isso em vez de entregar uma chave que mudaria sozinha.
+
+**Por dentro**, o atalho faz três chamadas: pede um endereço de envio
+(`/api/atalho/preparar`), manda o arquivo direto para o armazenamento e avisa que
+terminou (`/api/atalho/concluir`). O arquivo nunca passa pela função da Vercel,
+então o limite de tamanho de requisição não atrapalha.
 
 ---
 

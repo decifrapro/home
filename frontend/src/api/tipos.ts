@@ -160,3 +160,13 @@ export interface ConfiguracaoPublica {
   ffmpegAvailable: boolean
   videoSupported: boolean
 }
+
+export interface DadosDoAtalho {
+  disponivel: boolean
+  motivo?: string
+  chave?: string
+  cabecalho?: string
+  urlPreparar?: string
+  urlConcluir?: string
+  appUrl?: string
+}

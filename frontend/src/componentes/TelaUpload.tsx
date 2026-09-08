@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import type { ConfiguracaoPublica } from '../api/tipos'
 import { EnvioCancelado, enviarZip, type ProgressoDoEnvio } from '../upload/enviarZip'
 import { enviarZipDireto } from '../upload/enviarZipDireto'
+import { AtalhoIphone } from './AtalhoIphone'
 
 interface Props {
   configuracao: ConfiguracaoPublica
@@ -152,6 +153,8 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
           completo, mas áudios, imagens, PDFs e vídeos ficam pendentes.
         </p>
       )}
+
+      <AtalhoIphone />
 
       <section className="cartao">
         <h2>Como exportar a conversa</h2>

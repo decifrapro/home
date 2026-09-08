@@ -22,6 +22,7 @@ from app.config import settings
 from app.jobs.worker import PARSE, PROCESS, RETRY_ALL, RETRY_ONE, Task, purge_expired, runner
 from app.models.schemas import EventType, JobStatus, ProcessingStatus
 from app.services import storage
+from app.services.atalho import CABECALHO, chave_confere, chave_disponivel, gerar_chave
 from app.services.exporters import export_json_text, export_markdown, export_txt
 
 logger = logging.getLogger(__name__)
@@ -387,6 +388,152 @@ def delete_job(job_id: str) -> dict:
     db.delete_job(job_id)
     logger.info("job=%s apagado pelo usuário", job_id)
     return {"deleted": True, "jobId": job_id}
+
+
+# ── Atalho do iPhone ────────────────────────────────────────────────────────
+class AtalhoPreparar(BaseModel):
+    filename: str = Field(default="conversa.zip", max_length=400)
+    size: int = Field(default=0, ge=0)
+
+
+class AtalhoConcluir(BaseModel):
+    jobId: str = Field(max_length=64)
+
+
+def _exige_chave(request: Request) -> None:
+    """O Atalho se identifica pela chave pessoal, não pela sessão do navegador."""
+    enviada = request.headers.get(CABECALHO) or request.query_params.get("chave")
+    if not chave_confere(enviada, settings):
+        raise HTTPException(
+            status_code=401,
+            detail="Chave do atalho inválida. Gere a chave de novo dentro do aplicativo.",
+        )
+
+
+@router.get("/atalho/chave", dependencies=[Depends(require_access)])
+def atalho_chave(request: Request) -> dict:
+    """Mostra a chave e os endereços que o Atalho precisa. Só para quem já entrou."""
+    if not chave_disponivel(settings):
+        return {
+            "disponivel": False,
+            "motivo": (
+                "Falta definir APP_SESSION_SECRET no servidor. Sem esse segredo a chave mudaria "
+                "sozinha a cada reinício e o atalho pararia de funcionar."
+            ),
+        }
+    base = str(request.base_url).rstrip("/")
+    return {
+        "disponivel": True,
+        "chave": gerar_chave(settings),
+        "cabecalho": CABECALHO,
+        "urlPreparar": f"{base}/api/atalho/preparar",
+        "urlConcluir": f"{base}/api/atalho/concluir",
+        "appUrl": base,
+    }
+
+
+@router.post("/atalho/preparar")
+def atalho_preparar(request: Request, payload: AtalhoPreparar) -> dict:
+    """Primeiro passo do Atalho: cria o atendimento e devolve para onde mandar o arquivo."""
+    _exige_chave(request)
+    max_bytes = settings.max_zip_mb * 1024 * 1024
+    if payload.size and payload.size > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"O ZIP tem {payload.size / 1024 / 1024:.0f} MB e o limite é {settings.max_zip_mb} MB.",
+        )
+
+    job_id = storage.new_job_id()
+    storage.ensure_job_dirs(job_id)
+    db.create_job(job_id)
+    db.update_job(
+        job_id,
+        status=JobStatus.UPLOADING,
+        original_filename=payload.filename.strip()[:400] or "conversa.zip",
+        zip_size=payload.size,
+    )
+    db.merge_job_metadata(job_id, {"origem": "atalho-ios"})
+
+    if settings.storage_mode == "supabase":
+        from app.repositorios.supabase import cliente
+
+        caminho = f"{job_id}/conversa.zip"
+        link = cliente().signed_upload_url(caminho)
+        db.merge_job_metadata(job_id, {"zipPath": caminho})
+        destino = link["signedUrl"]
+    else:
+        destino = f"{str(request.base_url).rstrip('/')}/api/atalho/arquivo/{job_id}"
+
+    logger.info("job=%s criado pelo atalho do iPhone", job_id)
+    return {"jobId": job_id, "uploadUrl": destino}
+
+
+@router.put("/atalho/arquivo/{job_id}")
+async def atalho_arquivo(job_id: str, request: Request) -> dict:
+    """Recebe o ZIP quando o sistema roda em servidor próprio (sem Supabase)."""
+    _exige_chave(request)
+    _job_or_404(job_id)
+    destino = storage.zip_path(job_id)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    max_bytes = settings.max_zip_mb * 1024 * 1024
+    escrito = 0
+    with destino.open("wb") as saida:
+        async for bloco in request.stream():
+            escrito += len(bloco)
+            if escrito > max_bytes:
+                saida.close()
+                destino.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="Arquivo maior que o permitido.")
+            saida.write(bloco)
+    db.update_job(job_id, zip_size=escrito, status=JobStatus.UPLOADED)
+    return {"jobId": job_id, "size": escrito}
+
+
+@router.post("/atalho/concluir")
+async def atalho_concluir(request: Request, payload: AtalhoConcluir) -> dict:
+    """Último passo: lê a conversa e já começa a decifrar.
+
+    Aqui ninguém está olhando a tela — a pessoa tocou em Compartilhar no WhatsApp
+    e seguiu a vida. Por isso o processamento começa sozinho, sem a tela de
+    confirmação de custo. Quem segura o gasto é o teto por atendimento.
+    """
+    _exige_chave(request)
+    job = _job_or_404(payload.jobId)
+    db.update_job(job.id, status=JobStatus.UPLOADED)
+    await runner.parse_job(db.get_job(job.id) or job)
+
+    atual = db.get_job(job.id)
+    if atual and atual.status == JobStatus.AWAITING_CONFIRMATION:
+        db.update_job(job.id, confirmed=True, status=JobStatus.PROCESSING)
+        if not settings.serverless:
+            await runner.submit(Task(job.id, PROCESS))
+        atual = db.get_job(job.id)
+
+    endereco = f"{str(request.base_url).rstrip('/')}/?atendimento={job.id}"
+    resposta = job_to_dict(atual) if atual else {"id": job.id}
+    return {
+        "jobId": job.id,
+        "status": resposta.get("status"),
+        "url": endereco,
+        "mensagem": _resumo_para_o_atalho(atual),
+    }
+
+
+def _resumo_para_o_atalho(job) -> str:
+    """Frase curta que o iPhone mostra na notificação, sem jargão."""
+    if job is None:
+        return "Conversa recebida."
+    if job.status == JobStatus.FAILED:
+        return job.error or "Não consegui ler esta conversa."
+    inventario = job.inventory
+    partes = [f"{job.event_count} mensagens"]
+    if inventario.audio:
+        partes.append(f"{inventario.audio} áudios")
+    if inventario.image:
+        partes.append(f"{inventario.image} imagens")
+    if inventario.pdf:
+        partes.append(f"{inventario.pdf} PDFs")
+    return "Conversa recebida: " + ", ".join(partes) + ". Decifrando…"
 
 
 # ── Exportações ─────────────────────────────────────────────────────────────
