@@ -240,3 +240,62 @@ describe('atalho: saber se ele chegou ao servidor', () => {
     expect(screen.getByText(/Editar ações/)).toBeInTheDocument()
   })
 })
+
+describe('conversas enviadas (celular e computador)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('lista o que já foi enviado e abre ao tocar', async () => {
+    const { ListaDeAtendimentos } = await import('../componentes/ListaDeAtendimentos')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            jobs: [
+              jobDeExemplo({ id: 'job1', originalFilename: 'Conversa com Rui.zip' }),
+              jobDeExemplo({
+                id: 'job2',
+                originalFilename: 'Conversa com Isabela.zip',
+                status: 'completed',
+                coverage: {
+                  categories: {},
+                  overallTotal: 4,
+                  overallDone: 4,
+                  percent: 100,
+                  complete: true,
+                },
+              }),
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+
+    const abrir = vi.fn()
+    render(<ListaDeAtendimentos aoAbrir={abrir} />)
+
+    await waitFor(() => expect(screen.getByText('Conversa com Rui.zip')).toBeInTheDocument())
+    expect(screen.getByText('99.6% decifrado')).toBeInTheDocument()
+    expect(screen.getByText('pronta')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Abrir Conversa com Rui.zip/ }))
+    expect(abrir).toHaveBeenCalledWith('job1')
+  })
+
+  it('não ocupa espaço quando ainda não há conversa nenhuma', async () => {
+    const { ListaDeAtendimentos } = await import('../componentes/ListaDeAtendimentos')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ jobs: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+    const { container } = render(<ListaDeAtendimentos aoAbrir={vi.fn()} />)
+    await waitFor(() => expect(container).toBeEmptyDOMElement())
+  })
+})

@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ConfiguracaoPublica } from '../api/tipos'
 import { EnvioCancelado, enviarZip, type ProgressoDoEnvio } from '../upload/enviarZip'
 import { enviarZipDireto } from '../upload/enviarZipDireto'
 import { AtalhoIphone } from './AtalhoIphone'
+import { ListaDeAtendimentos } from './ListaDeAtendimentos'
 
 interface Props {
   configuracao: ConfiguracaoPublica
@@ -19,6 +20,16 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
   const cancelamento = useRef<AbortController | null>(null)
 
   const enviando = progresso !== null
+
+  // No computador dá para colar o arquivo direto (Ctrl+V), sem procurar na pasta.
+  useEffect(() => {
+    function aoColar(evento: ClipboardEvent) {
+      const arquivo = evento.clipboardData?.files?.[0]
+      if (arquivo && !enviando) iniciar(arquivo)
+    }
+    window.addEventListener('paste', aoColar)
+    return () => window.removeEventListener('paste', aoColar)
+  })
 
   async function iniciar(arquivo: File) {
     setErro(null)
@@ -94,7 +105,10 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
           <br />
           ou toque para selecionar
           <br />
-          <span className="fraco">Aceita exportações do WhatsApp com mídia incluída, até {configuracao.maxZipMb} MB.</span>
+          <span className="fraco">
+            Aceita exportações do WhatsApp com mídia incluída, até {configuracao.maxZipMb} MB.
+            {' '}No computador você também pode colar o arquivo com Ctrl+V.
+          </span>
         </button>
 
         <input
@@ -153,6 +167,8 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
           completo, mas áudios, imagens, PDFs e vídeos ficam pendentes.
         </p>
       )}
+
+      <ListaDeAtendimentos aoAbrir={aoEnviar} />
 
       <AtalhoIphone />
 

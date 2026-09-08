@@ -29,6 +29,7 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 - [Custo](#custo)
 - [Trocar os modelos de IA](#trocar-os-modelos-de-ia)
 - [Instalar como aplicativo](#instalar-como-aplicativo)
+- [Mandar pelo celular, ler no computador](#mandar-pelo-celular-ler-no-computador)
 - [Enviar direto do WhatsApp no iPhone](#enviar-direto-do-whatsapp-no-iphone)
 - [Publicar](#publicar)
 - [Apagar um atendimento](#apagar-um-atendimento)
@@ -60,6 +61,24 @@ instalar programas assim. Sem ele, o áudio do WhatsApp ainda é transcrito — 
 
 Você escolhe preenchendo (ou não) as variáveis do Supabase. Sem elas, o sistema
 usa disco e banco locais; com elas, passa a usar o Supabase.
+
+---
+
+## Mandar pelo celular, ler no computador
+
+Exportar conversa só existe no celular — o WhatsApp não oferece isso no
+WhatsApp Web nem no aplicativo de computador. Mas ler uma conversa longa é bem
+melhor na tela grande, então o caminho natural é este:
+
+1. **No celular**, envie a conversa (pelo atalho, ou escolhendo o arquivo).
+2. **No computador**, abra o mesmo endereço. A conversa está esperando em
+   **Conversas enviadas**, na tela inicial.
+
+Não precisa transferir arquivo entre aparelhos, nem copiar link: é o mesmo
+servidor, e a lista mostra tudo que foi enviado de qualquer aparelho.
+
+No computador dá também para **arrastar** o ZIP para a área de envio ou
+**colar** com Ctrl+V, se o arquivo já estiver na sua máquina.
 
 ---
 
@@ -344,6 +363,24 @@ O aplicativo mostra essa instrução no primeiro acesso; ela é dispensável e n
 bloqueia o uso.
 
 **Desktop (Chrome/Edge)** — ícone de instalar na barra de endereço.
+
+---
+
+## Mandar pelo celular, ler no computador
+
+Exportar conversa só existe no celular — o WhatsApp não oferece isso no
+WhatsApp Web nem no aplicativo de computador. Mas ler uma conversa longa é bem
+melhor na tela grande, então o caminho natural é este:
+
+1. **No celular**, envie a conversa (pelo atalho, ou escolhendo o arquivo).
+2. **No computador**, abra o mesmo endereço. A conversa está esperando em
+   **Conversas enviadas**, na tela inicial.
+
+Não precisa transferir arquivo entre aparelhos, nem copiar link: é o mesmo
+servidor, e a lista mostra tudo que foi enviado de qualquer aparelho.
+
+No computador dá também para **arrastar** o ZIP para a área de envio ou
+**colar** com Ctrl+V, se o arquivo já estiver na sua máquina.
 
 ---
 
