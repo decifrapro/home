@@ -156,3 +156,55 @@ describe('instalação', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('iPhone: detalhes que costumam quebrar', () => {
+  it('o seletor de arquivo não filtra por tipo (no iOS isso esmaece o ZIP)', () => {
+    const tela = readFileSync(resolve(raiz, 'src/componentes/TelaUpload.tsx'), 'utf8')
+    expect(tela).not.toContain('accept=".zip')
+    expect(tela).toContain('accept="*/*"')
+    expect(tela).toContain("endsWith('.zip')") // a conferência é feita no código
+  })
+
+  it('copia usando a promessa, que é o jeito que o Safari aceita', async () => {
+    const { copiarTexto } = await import('../componentes/TelaTimeline')
+    const escritos: unknown[] = []
+
+    class ItemFalso {
+      constructor(readonly dados: Record<string, unknown>) {}
+    }
+    vi.stubGlobal('ClipboardItem', ItemFalso)
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        write: async (itens: unknown[]) => {
+          escritos.push(...itens)
+        },
+        writeText: async () => {
+          throw new Error('não deveria cair aqui no Safari')
+        },
+      },
+    })
+
+    await copiarTexto(async () => 'histórico da conversa')
+
+    expect(escritos).toHaveLength(1)
+    expect(escritos[0]).toBeInstanceOf(ItemFalso)
+  })
+
+  it('usa o caminho simples em navegador sem suporte à promessa', async () => {
+    const { copiarTexto } = await import('../componentes/TelaTimeline')
+    let copiado = ''
+    vi.stubGlobal('ClipboardItem', undefined)
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: {
+        writeText: async (texto: string) => {
+          copiado = texto
+        },
+      },
+    })
+
+    await copiarTexto(async () => 'histórico da conversa')
+    expect(copiado).toBe('histórico da conversa')
+  })
+})

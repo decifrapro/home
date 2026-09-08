@@ -8,6 +8,34 @@ import { EventoCartao } from './EventoCartao'
 import { Inventario } from './Inventario'
 import { NOME_POR_TIPO, formatarData } from './comum'
 
+/**
+ * Copia um texto que ainda vai ser buscado no servidor.
+ *
+ * O Safari do iPhone só deixa escrever na área de transferência enquanto o toque
+ * ainda "vale". Como a busca do histórico demora, escrever depois de esperar
+ * seria bloqueado — por isso entregamos a promessa ao navegador, que é a forma
+ * que ele aceita. Nos outros navegadores, o caminho simples continua valendo.
+ */
+export async function copiarTexto(buscar: () => Promise<string>): Promise<void> {
+  const suportaPromessa =
+    typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function'
+
+  if (suportaPromessa) {
+    try {
+      const item = new ClipboardItem({
+        'text/plain': buscar().then((texto) => new Blob([texto], { type: 'text/plain' })),
+      })
+      await navigator.clipboard.write([item])
+      return
+    } catch {
+      /* alguns navegadores recusam a promessa; segue pelo caminho simples */
+    }
+  }
+
+  const texto = await buscar()
+  await navigator.clipboard.writeText(texto)
+}
+
 interface Props {
   job: Job
   aoAtualizar: () => void
@@ -30,8 +58,7 @@ export function TelaTimeline({ job, aoAtualizar, aoApagar }: Props) {
   async function copiarHistorico() {
     setOcupado(true)
     try {
-      const texto = await api.exportar(job.id, 'txt')
-      await navigator.clipboard.writeText(texto)
+      await copiarTexto(() => api.exportar(job.id, 'txt'))
       setMensagem('Histórico copiado. É só colar onde quiser.')
     } catch {
       setMensagem('Não consegui copiar automaticamente. Baixe o TXT e copie de lá.')

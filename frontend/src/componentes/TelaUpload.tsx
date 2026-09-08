@@ -99,7 +99,10 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
         <input
           ref={entrada}
           type="file"
-          accept=".zip,application/zip"
+          /* Sem filtro estrito de propósito: no iPhone, um `accept` fechado deixa o
+             ZIP do WhatsApp esmaecido e impossível de escolher na tela de Arquivos.
+             O tipo é conferido logo abaixo, em `iniciar`. */
+          accept="*/*"
           className="oculto-visualmente"
           aria-label="Selecionar o ZIP da conversa"
           onChange={(evento) => {
