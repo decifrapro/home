@@ -37,3 +37,6 @@ htmlcov/
 
 # Artefatos de build do TypeScript
 *.tsbuildinfo
+
+# Metadados de instalação editável
+*.egg-info/
