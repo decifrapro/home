@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img">
+  <title>Decifra Pro</title>
+  <desc>Onda sonora que se transforma em uma linha de texto.</desc>
+  <rect width="512" height="512" rx="112" fill="#6B4EE6"/>
+  <rect x="110.0" y="200.0" width="26.0" height="112.0" rx="13.0" fill="#FFFFFF"/>
+  <rect x="158.0" y="168.0" width="26.0" height="176.0" rx="13.0" fill="#FFFFFF"/>
+  <rect x="206.0" y="214.0" width="26.0" height="84.0" rx="13.0" fill="#FFFFFF"/>
+  <rect x="254.0" y="184.0" width="26.0" height="144.0" rx="13.0" fill="#FFFFFF"/>
+  <rect x="302.0" y="243.0" width="100.0" height="26.0" rx="13.0" fill="#FFC94D"/>
+</svg>

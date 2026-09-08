@@ -1,0 +1,36 @@
+# Dependências
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build
+frontend/dist/
+frontend/.vite/
+backend/dist/
+*.egg-info/
+
+# Dados e segredos
+.env
+.env.local
+data/
+!data/.gitkeep
+*.sqlite3
+*.db
+
+# Conversas reais e mídias (nunca versionar)
+*.zip
+!tests-fixtures/**/*.zip
+Conversa do WhatsApp*
+tests-fixtures/real/
+
+# Sistema
+.DS_Store
+Thumbs.db
+coverage/
+htmlcov/
+.coverage
