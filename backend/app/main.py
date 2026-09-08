@@ -29,7 +29,13 @@ logger = logging.getLogger("decifra")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.connect()
+    try:
+        db.connect()
+    except Exception as exc:
+        # Numa função sem processo de pé, morrer aqui derruba toda requisição,
+        # inclusive a de diagnóstico. Melhor subir e deixar o erro aparecer na
+        # tela, com texto que diga o que fazer.
+        logger.error("não consegui falar com o banco: %s", exc)
     if not settings.serverless:
         # Servidor próprio: existe processo de pé, então o worker roda aqui.
         purge_expired()
@@ -63,6 +69,27 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+@app.get("/api/diag", include_in_schema=False)
+def diagnostico() -> dict:
+    """Diz o que está configurado e o que responde. Nunca mostra segredo."""
+    resultado: dict = {
+        "app": settings.app_name,
+        "guarda": db.backend,
+        "iaConfigurada": settings.ai_enabled,
+        "supabaseConfigurado": bool(settings.supabase_url and settings.supabase_service_key),
+        "senhaDeAcesso": settings.access_gate_enabled,
+        "segredoDeSessao": bool(settings.app_session_secret),
+        "ffmpeg": settings.storage_mode != "supabase",
+        "frontendCompilado": (settings.frontend_dist / "index.html").exists(),
+    }
+    try:
+        db.connect()
+        resultado["banco"] = "ok"
+    except Exception as exc:
+        resultado["banco"] = f"falhou: {str(exc)[:300]}"
+    return resultado
 
 
 @app.exception_handler(ValueError)
