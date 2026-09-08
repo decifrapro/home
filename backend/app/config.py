@@ -12,7 +12,7 @@ import shutil
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,7 +45,14 @@ class Settings(BaseSettings):
     # Armazenamento na nuvem (Vercel + Supabase). Preenchido, passa a valer no
     # lugar do SQLite e do disco local.
     supabase_url: str = ""
-    supabase_service_key: str = ""
+    # A chave é conhecida por dois nomes: o do Supabase antigo (service_role) e o
+    # curto. Os dois valem, para o que está escrito na documentação sempre funcionar.
+    supabase_service_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_KEY", "supabase_service_key"
+        ),
+    )
     supabase_bucket: str = "decifra"
     supabase_table_prefix: str = "decifra_"
     supabase_timeout_seconds: int = 60
@@ -111,6 +118,19 @@ class Settings(BaseSettings):
     # Diretório do frontend compilado (servido pelo backend em produção)
     frontend_dist: Path = Field(default=Path("/app/frontend"))
 
+    @classmethod
+    def _campo_de(cls, chave: str) -> object | None:
+        """Acha o campo pelo nome ou por qualquer um dos seus apelidos."""
+        procurado = str(chave).lower()
+        for nome, campo in cls.model_fields.items():
+            if nome.lower() == procurado:
+                return campo
+            apelido = getattr(campo, "validation_alias", None)
+            escolhas = getattr(apelido, "choices", [apelido] if apelido else [])
+            if any(str(item).lower() == procurado for item in escolhas if item):
+                return campo
+        return None
+
     @model_validator(mode="before")
     @classmethod
     def _ignorar_vazios(cls, valores: object) -> object:
@@ -124,8 +144,8 @@ class Settings(BaseSettings):
             return valores
         limpos = {}
         for chave, valor in valores.items():
-            campo = cls.model_fields.get(str(chave).lower())
-            if valor == "" and campo is not None and campo.annotation is not str:
+            campo = cls._campo_de(chave)
+            if valor == "" and campo is not None and getattr(campo, "annotation", str) is not str:
                 continue  # deixa o padrão valer
             limpos[chave] = valor
         return limpos

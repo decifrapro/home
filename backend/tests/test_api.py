@@ -186,3 +186,54 @@ def test_porta_pode_ser_ajustada_por_app_port(monkeypatch):
 
     monkeypatch.setitem(os.environ, "APP_PORT", "9000")
     assert Settings().port == 9000
+
+
+def test_toda_variavel_documentada_e_realmente_lida(monkeypatch):
+    """O .env.example é a documentação: tudo que está lá tem que funcionar.
+
+    Este teste existe porque uma variável documentada com um nome e lida com
+    outro deixou o sistema publicado sem enxergar o Supabase — e o sintoma não
+    apontava para a causa.
+    """
+    import os
+    from pathlib import Path
+
+    from app.config import Settings
+
+    exemplo = Path(__file__).resolve().parents[2] / ".env.example"
+    nomes = [
+        linha.split("=", 1)[0].strip()
+        for linha in exemplo.read_text(encoding="utf-8").splitlines()
+        if "=" in linha and not linha.strip().startswith("#")
+    ]
+    assert len(nomes) > 30, "o exemplo de configuração deveria listar tudo"
+
+    for nome in nomes:
+        monkeypatch.setitem(os.environ, nome, "")
+
+    config = Settings()
+    lidos = set(config.model_dump().keys())
+    faltando = [
+        nome
+        for nome in nomes
+        if nome.lower() not in lidos
+        and nome not in {"SUPABASE_SERVICE_ROLE_KEY"}  # lido por apelido
+        and nome not in {"APP_HOST", "APP_PORT"}  # lidos por apelido
+    ]
+    assert faltando == [], f"variáveis documentadas que o código não lê: {faltando}"
+
+
+def test_chave_do_supabase_aceita_os_dois_nomes(monkeypatch):
+    import os
+
+    from app.config import Settings
+
+    monkeypatch.setitem(os.environ, "SUPABASE_URL", "https://projeto.supabase.co")
+    monkeypatch.setitem(os.environ, "SUPABASE_SERVICE_ROLE_KEY", "sb_secret_exemplo")
+    config = Settings()
+    assert config.supabase_service_key == "sb_secret_exemplo"
+    assert config.storage_mode == "supabase"
+
+    monkeypatch.delitem(os.environ, "SUPABASE_SERVICE_ROLE_KEY")
+    monkeypatch.setitem(os.environ, "SUPABASE_SERVICE_KEY", "outro")
+    assert Settings().supabase_service_key == "outro"

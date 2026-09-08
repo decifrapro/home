@@ -7,6 +7,7 @@ tarefa separada do request HTTP — o processamento não depende de conexão abe
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -89,6 +90,15 @@ def diagnostico() -> dict:
         resultado["banco"] = "ok"
     except Exception as exc:
         resultado["banco"] = f"falhou: {str(exc)[:300]}"
+
+    # Nomes das variáveis de ambiente e se alguma chegou vazia. Nunca os valores:
+    # variável vazia no lugar errado já derrubou o sistema uma vez, e sem isso
+    # não havia como enxergar.
+    resultado["variaveis"] = {
+        nome: ("vazia" if valor == "" else f"{len(valor)} caracteres")
+        for nome, valor in sorted(os.environ.items())
+        if not nome.startswith(("AWS_", "LAMBDA_", "_", "npm_"))
+    }
     return resultado
 
 
