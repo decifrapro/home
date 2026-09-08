@@ -160,3 +160,29 @@ def test_gate_por_senha_bloqueia_e_libera(client_com_senha):
 
     client_com_senha.post("/api/auth/logout")
     assert client_com_senha.post("/api/jobs").status_code == 401
+
+
+def test_configuracao_aguenta_variavel_vazia_da_hospedagem(monkeypatch):
+    """A Vercel injeta variáveis próprias; uma delas vazia não pode derrubar tudo."""
+    import os
+
+    from app.config import Settings
+
+    monkeypatch.setitem(os.environ, "PORT", "")
+    monkeypatch.setitem(os.environ, "MAX_ZIP_MB", "")
+    monkeypatch.setitem(os.environ, "APP_ACCESS_PASSWORD", "")
+
+    config = Settings()
+
+    assert config.port == 8000  # valor padrão, não quebra
+    assert config.max_zip_mb == 500
+    assert config.app_access_password == ""  # texto vazio continua valendo
+
+
+def test_porta_pode_ser_ajustada_por_app_port(monkeypatch):
+    import os
+
+    from app.config import Settings
+
+    monkeypatch.setitem(os.environ, "APP_PORT", "9000")
+    assert Settings().port == 9000

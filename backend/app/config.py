@@ -12,7 +12,7 @@ import shutil
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     # Identidade
@@ -29,9 +30,11 @@ class Settings(BaseSettings):
     app_short_name: str = "Decifra"
     app_description: str = "Leitor multimodal de conversas exportadas do WhatsApp"
 
-    # Servidor
-    host: str = "0.0.0.0"
-    port: int = 8000
+    # Servidor. Os nomes levam APP_ na frente de propósito: `PORT` e `HOST` são
+    # usados por várias plataformas de hospedagem, e uma delas chegando vazia
+    # derrubava a configuração inteira.
+    host: str = Field(default="0.0.0.0", alias="APP_HOST")
+    port: int = Field(default=8000, alias="APP_PORT")
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -107,6 +110,25 @@ class Settings(BaseSettings):
 
     # Diretório do frontend compilado (servido pelo backend em produção)
     frontend_dist: Path = Field(default=Path("/app/frontend"))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ignorar_vazios(cls, valores: object) -> object:
+        """Variável de ambiente vazia vale como "não preenchida".
+
+        Hospedagens injetam variáveis próprias, às vezes vazias. Antes, uma
+        dessas caindo num campo de número derrubava o servidor inteiro na
+        subida — e o erro só aparecia como "função falhou".
+        """
+        if not isinstance(valores, dict):
+            return valores
+        limpos = {}
+        for chave, valor in valores.items():
+            campo = cls.model_fields.get(str(chave).lower())
+            if valor == "" and campo is not None and campo.annotation is not str:
+                continue  # deixa o padrão valer
+            limpos[chave] = valor
+        return limpos
 
     @field_validator("data_dir", "frontend_dist", mode="before")
     @classmethod
