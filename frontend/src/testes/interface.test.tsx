@@ -1,0 +1,138 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { Cobertura } from '../componentes/Cobertura'
+import { EventoCartao } from '../componentes/EventoCartao'
+import { TelaTimeline } from '../componentes/TelaTimeline'
+import { eventoDeAudio, eventoDeTexto, jobDeExemplo } from './dados'
+
+describe('cobertura', () => {
+  it('não anuncia 100% quando ainda falta item', () => {
+    render(<Cobertura job={jobDeExemplo()} />)
+    expect(screen.getByText(/99\.6%/)).toBeInTheDocument()
+    expect(screen.queryByText(/Cobertura geral: 100%/)).not.toBeInTheDocument()
+    expect(screen.getByText('1 com falha')).toBeInTheDocument()
+  })
+
+  it('anuncia 100% só quando tudo foi decifrado', () => {
+    const job = jobDeExemplo({
+      coverage: {
+        categories: {
+          text: { total: 10, done: 10, failed: 0, pending: 0, unsupported: 0, unresolved: 0, complete: true },
+        },
+        overallTotal: 10,
+        overallDone: 10,
+        percent: 100,
+        complete: true,
+      },
+    })
+    render(<Cobertura job={job} />)
+    expect(screen.getByText(/Cobertura geral: 100%/)).toBeInTheDocument()
+  })
+})
+
+describe('cartão de evento', () => {
+  it('separa o conteúdo original do que a IA extraiu', () => {
+    render(<EventoCartao evento={eventoDeAudio()} />)
+    expect(screen.getByText('🎙 Áudio transcrito')).toBeInTheDocument()
+    expect(screen.getByText(/Boa tarde, seu Rui/)).toBeInTheDocument()
+    expect(screen.getAllByText(/PTT-20260825-WA0001.opus/).length).toBeGreaterThan(0)
+  })
+
+  it('mostra a legenda original separada da análise da imagem', () => {
+    const evento = eventoDeAudio({
+      type: 'image',
+      caption: 'Olha essa condição',
+      processedText: 'texto e descrição',
+      metadata: { ocrText: 'Sala 705 — R$ 4.200,00', visualDescription: 'print de proposta' },
+    })
+    render(<EventoCartao evento={evento} />)
+    expect(screen.getByText('Legenda original')).toBeInTheDocument()
+    expect(screen.getByText('Olha essa condição')).toBeInTheDocument()
+    expect(screen.getByText(/Sala 705/)).toBeInTheDocument()
+  })
+
+  it('mantém o evento com falha visível e oferece reprocessar', async () => {
+    const aoReprocessar = vi.fn()
+    const evento = eventoDeAudio({
+      processingStatus: 'failed',
+      processedText: null,
+      processingError: 'Transcrição não concluída: provedor indisponível',
+    })
+    render(<EventoCartao evento={evento} aoReprocessar={aoReprocessar} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Transcrição não concluída')
+    await userEvent.click(screen.getByRole('button', { name: /Reprocessar este item/ }))
+    expect(aoReprocessar).toHaveBeenCalledWith('e2')
+  })
+
+  it('não depende só de cor: o status vai escrito', () => {
+    render(<EventoCartao evento={eventoDeAudio({ processingStatus: 'pending', processedText: null })} />)
+    expect(screen.getByText('pendente')).toBeInTheDocument()
+  })
+})
+
+describe('tela da timeline', () => {
+  const respostas: Record<string, unknown> = {}
+
+  beforeEach(() => {
+    respostas['/api/jobs/job123/events'] = {
+      total: 2,
+      events: [eventoDeTexto(), eventoDeAudio()],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const chave = url.split('?')[0]
+        const corpo = respostas[chave] ?? { total: 0, events: [] }
+        return new Response(JSON.stringify(corpo), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('mostra os eventos, o inventário e os botões de download', async () => {
+    render(<TelaTimeline job={jobDeExemplo()} aoAtualizar={vi.fn()} aoApagar={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByText(/Boa tarde, Sr. Rui/)).toBeInTheDocument())
+    expect(screen.getByText('Inventário da conversa')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Baixar TXT' })).toHaveAttribute(
+      'href',
+      '/api/jobs/job123/export/txt',
+    )
+    expect(screen.getByRole('link', { name: 'Baixar Markdown' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Baixar JSON' })).toBeInTheDocument()
+    expect(screen.getByText(/Este histórico está incompleto/)).toBeInTheDocument()
+  })
+
+  it('filtra por tipo de mídia pedindo ao servidor', async () => {
+    render(<TelaTimeline job={jobDeExemplo()} aoAtualizar={vi.fn()} aoApagar={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText(/Boa tarde, Sr. Rui/)).toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByLabelText('Filtrar por tipo de mídia'), 'audio')
+
+    await waitFor(() => {
+      const chamadas = (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0])
+      expect(chamadas.some((url) => url.includes('type=audio'))).toBe(true)
+    })
+  })
+
+  it('busca textual chega ao servidor', async () => {
+    render(<TelaTimeline job={jobDeExemplo()} aoAtualizar={vi.fn()} aoApagar={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText(/Boa tarde, Sr. Rui/)).toBeInTheDocument())
+
+    await userEvent.type(screen.getByLabelText('Buscar na conversa'), 'proposta')
+
+    await waitFor(() => {
+      const chamadas = (fetch as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0])
+      expect(chamadas.some((url) => url.includes('search=proposta'))).toBe(true)
+    })
+  })
+})

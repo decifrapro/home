@@ -358,6 +358,25 @@ def _extension_hint(filename: str) -> str:
     return EXT_TYPE_HINT.get(ext, "unknown")
 
 
+NOME_DE_ARQUIVO = re.compile(r"^[^\\/:*?\"<>|]+\.[A-Za-z0-9]{1,8}$")
+
+
+def _separar_prefixo(candidato: str) -> tuple[str, str | None]:
+    """Separa um eventual texto antes do nome do arquivo.
+
+    O WhatsApp escreve a linha do anexo como "arquivo.ext (arquivo anexado)".
+    Quando algo aparece antes disso, o que vale como nome é o último trecho —
+    nome de arquivo não tem dois-pontos no Android nem no iOS.
+    """
+    if ": " not in candidato:
+        return candidato, None
+    prefixo, _, resto = candidato.rpartition(": ")
+    resto = resto.strip()
+    if NOME_DE_ARQUIVO.match(resto):
+        return resto, prefixo.strip() or None
+    return candidato, None
+
+
 def classify(message: RawMessage) -> ParsedEvent:
     """Transforma um evento cru em evento classificado (tipo, anexo, legenda, URLs)."""
     original = message.text
@@ -384,8 +403,8 @@ def classify(message: RawMessage) -> ParsedEvent:
         caption = remainder or None
         event_type = _extension_hint(attachment)
     elif android:
-        attachment = strip_invisible(android.group("file")).strip()
-        caption = (android.group("caption") or "").strip() or None
+        attachment, prefixo = _separar_prefixo(strip_invisible(android.group("file")).strip())
+        caption = (android.group("caption") or "").strip() or prefixo
         event_type = _extension_hint(attachment)
     elif MEDIA_OMITTED_BRACKET.search(probe) or MEDIA_OMITTED_INLINE.match(probe):
         inline = MEDIA_OMITTED_INLINE.match(probe)

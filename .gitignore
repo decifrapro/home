@@ -34,3 +34,6 @@ Thumbs.db
 coverage/
 htmlcov/
 .coverage
+
+# Artefatos de build do TypeScript
+*.tsbuildinfo

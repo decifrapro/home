@@ -1,0 +1,21 @@
+# Uso local: copie .env.example para .env, ajuste o que precisar e rode
+#   docker compose up --build
+services:
+  decifra:
+    build:
+      context: .
+      args:
+        # Mude para "true" se quiser o fallback de navegador headless na leitura de links.
+        INSTALL_PLAYWRIGHT: "false"
+    image: decifra-pro:local
+    container_name: decifra-pro
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      # Volume persistente: os atendimentos sobrevivem a reinícios do container.
+      - ./data:/data
+    restart: unless-stopped

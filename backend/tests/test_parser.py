@@ -152,3 +152,11 @@ def test_ordem_de_data_ambigua_assume_dia_primeiro():
 
 def test_extracao_de_urls_remove_pontuacao_final():
     assert extract_urls("veja https://a.com/b, e www.c.com.") == ["https://a.com/b", "www.c.com"]
+
+
+def test_texto_antes_do_nome_do_arquivo_nao_vira_nome_do_arquivo():
+    chat = "25/08/2026 12:01 - Rui: segue em anexo: Proposta 705.pdf (arquivo anexado)\n"
+    event = parse_chat(chat).events[0]
+    assert event.attachment_name == "Proposta 705.pdf"
+    assert event.caption == "segue em anexo"
+    assert event.type == "pdf"

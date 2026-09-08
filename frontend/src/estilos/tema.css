@@ -1,0 +1,434 @@
+/*
+ * Tema do Decifra Pro — valores vindos de MARCA.md.
+ * Alterar cor do produto é alterar aqui, e só aqui.
+ *
+ * Regra de cor: roxo = ainda não processado, âmbar = decifrado,
+ * vermelho do sistema = falha. No modo escuro o "decifrado" vira lilás,
+ * porque âmbar sobre roxo perde legibilidade; ali o âmbar fica só para avisos.
+ */
+
+:root {
+  --roxo: #6b4ee6;
+  --roxo-suave: #efeafd;
+  --decifrado: #ffc94d;
+  --decifrado-suave: #fff6e0;
+  --aviso: #ffc94d;
+  --aviso-suave: #fff6e0;
+  --falha: #c0392b;
+  --falha-suave: #fdeceb;
+
+  --texto: #1a1523;
+  --texto-fraco: #77728a;
+  --fundo: #faf9fc;
+  --superficie: #ffffff;
+  --superficie-2: #f4f2f9;
+  --borda: #e8e4f2;
+
+  --raio: 12px;
+  --raio-pequeno: 8px;
+  --espaco: 16px;
+  --largura-maxima: 900px;
+
+  --fonte: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --peso-titulo: 500;
+
+  color-scheme: light;
+}
+
+[data-tema='escuro'] {
+  --roxo: #a78bfa;
+  --roxo-suave: #1d1b2e;
+  --decifrado: #c8b6ff;
+  --decifrado-suave: #1b1930;
+  --aviso: #ffc94d;
+  --aviso-suave: #2a2413;
+  --falha: #ff8a80;
+  --falha-suave: #2a1a19;
+
+  --texto: #eceaf3;
+  --texto-fraco: #9a94ac;
+  --fundo: #0b0f14;
+  --superficie: #10151c;
+  --superficie-2: #151b24;
+  --borda: #2a3240;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--fonte);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: var(--peso-titulo);
+  line-height: 1.25;
+  margin: 0 0 8px;
+}
+
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1rem; }
+
+p { margin: 0 0 12px; }
+
+a {
+  color: var(--roxo);
+  overflow-wrap: anywhere;
+}
+
+.pagina {
+  max-width: var(--largura-maxima);
+  margin: 0 auto;
+  padding: var(--espaco);
+  padding-bottom: calc(var(--espaco) + env(safe-area-inset-bottom, 0px));
+}
+
+.cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px var(--espaco);
+  border-bottom: 1px solid var(--borda);
+  background: var(--superficie);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cabecalho__marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: var(--peso-titulo);
+  white-space: nowrap;
+}
+
+.cabecalho__marca img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.cabecalho__acoes {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: var(--espaco);
+  margin-bottom: 12px;
+}
+
+.botao {
+  font: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--peso-titulo);
+  color: var(--superficie);
+  background: var(--roxo);
+  border: 1px solid var(--roxo);
+  border-radius: var(--raio-pequeno);
+  padding: 12px 18px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* Só o botão preenchido inverte o texto no modo escuro. Os de contorno
+   continuam com a cor de texto normal, senão somem no fundo escuro. */
+[data-tema='escuro'] .botao:not(.botao--secundario):not(.botao--perigo) {
+  color: #12101c;
+}
+
+.botao:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.botao--secundario {
+  background: transparent;
+  color: var(--texto);
+  border-color: var(--borda);
+}
+
+.botao--perigo {
+  background: transparent;
+  color: var(--falha);
+  border-color: var(--falha);
+}
+
+.botao--pequeno {
+  padding: 8px 12px;
+  min-height: 38px;
+  font-size: 0.9rem;
+}
+
+.botao:focus-visible,
+.area-arrastar:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--roxo);
+  outline-offset: 2px;
+}
+
+.area-arrastar {
+  border: 2px dashed var(--roxo);
+  border-radius: var(--raio);
+  background: var(--roxo-suave);
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: var(--texto);
+}
+
+.area-arrastar--ativa {
+  background: var(--superficie-2);
+}
+
+.barra {
+  height: 10px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barra__preenchimento {
+  height: 100%;
+  background: var(--roxo);
+  transition: width 0.2s linear;
+}
+
+.barra__preenchimento--completo {
+  background: var(--decifrado);
+}
+
+.selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: var(--peso-titulo);
+  border-radius: 999px;
+  padding: 3px 10px;
+  border: 1px solid var(--borda);
+  background: var(--superficie-2);
+  color: var(--texto-fraco);
+}
+
+.selo--pendente {
+  background: var(--roxo-suave);
+  border-color: var(--roxo);
+  color: var(--roxo);
+}
+
+.selo--decifrado {
+  background: var(--decifrado-suave);
+  border-color: var(--decifrado);
+  color: var(--texto);
+}
+
+.selo--falha {
+  background: var(--falha-suave);
+  border-color: var(--falha);
+  color: var(--falha);
+}
+
+.evento {
+  border: 1px solid var(--borda);
+  border-left: 4px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.evento--pendente { border-left-color: var(--roxo); }
+.evento--decifrado { border-left-color: var(--decifrado); }
+.evento--falha { border-left-color: var(--falha); }
+
+.evento__topo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--texto-fraco);
+  font-size: 0.85rem;
+}
+
+.evento__quem {
+  color: var(--texto);
+  font-weight: var(--peso-titulo);
+}
+
+.evento__original {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+}
+
+.evento__decifrado {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--raio-pequeno);
+  background: var(--superficie-2);
+  border: 1px dashed var(--borda);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.evento__rotulo {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--texto-fraco);
+  text-transform: none;
+  margin-bottom: 4px;
+}
+
+.evento__erro {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--raio-pequeno);
+  background: var(--falha-suave);
+  border: 1px solid var(--falha);
+  color: var(--falha);
+}
+
+.aviso {
+  padding: 12px 14px;
+  border-radius: var(--raio-pequeno);
+  border: 1px solid var(--aviso);
+  background: var(--aviso-suave);
+  margin-bottom: 10px;
+  color: var(--texto);
+}
+
+.aviso--erro {
+  border-color: var(--falha);
+  background: var(--falha-suave);
+  color: var(--falha);
+}
+
+.linha {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.linha--espalhada {
+  justify-content: space-between;
+}
+
+.tabela-cobertura {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.tabela-cobertura th,
+.tabela-cobertura td {
+  text-align: left;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.tabela-cobertura td:last-child,
+.tabela-cobertura th:last-child {
+  text-align: right;
+}
+
+.fraco {
+  color: var(--texto-fraco);
+  font-size: 0.9rem;
+}
+
+.filtros {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+select,
+input[type='search'],
+input[type='password'] {
+  font: inherit;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pequeno);
+  padding: 10px 12px;
+  min-height: 44px;
+}
+
+input[type='search'] {
+  flex: 1 1 200px;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--texto-fraco);
+  font-size: 0.9rem;
+  padding: 4px 0;
+}
+
+.conteudo-longo {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.instalar {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--superficie-2);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.instalar ol {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.oculto-visualmente {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .pagina { padding: 12px; }
+  .cabecalho { padding: 10px 12px; }
+  h1 { font-size: 1.3rem; }
+}

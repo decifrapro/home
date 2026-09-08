@@ -20,6 +20,10 @@ from app.services.matcher import AttachmentMatcher
 from app.services.mime import type_for_mime
 
 
+def _plural(quantidade: int, singular: str, plural: str) -> str:
+    return singular if quantidade == 1 else plural
+
+
 def _event_type(value: str) -> EventType:
     try:
         return EventType(value)
@@ -123,8 +127,13 @@ def build_timeline(
             JobWarning(
                 code="unresolved_attachments",
                 message=(
-                    f"{inventory.attachments_unresolved} anexos citados na conversa não foram "
-                    "encontrados no ZIP. Eles continuam visíveis na timeline, sem conteúdo."
+                    _plural(
+                        inventory.attachments_unresolved,
+                        "1 anexo citado na conversa não foi encontrado no ZIP. "
+                        "Ele continua visível na timeline, sem conteúdo.",
+                        f"{inventory.attachments_unresolved} anexos citados na conversa não foram "
+                        "encontrados no ZIP. Eles continuam visíveis na timeline, sem conteúdo.",
+                    )
                 ),
             )
         )
@@ -133,8 +142,12 @@ def build_timeline(
             JobWarning(
                 code="orphan_files",
                 message=(
-                    f"{inventory.orphan_files} arquivos do ZIP não são citados no TXT. "
-                    "Eles não foram inseridos na conversa."
+                    _plural(
+                        inventory.orphan_files,
+                        "1 arquivo do ZIP não é citado no TXT. Ele não foi inserido na conversa.",
+                        f"{inventory.orphan_files} arquivos do ZIP não são citados no TXT. "
+                        "Eles não foram inseridos na conversa.",
+                    )
                 ),
                 detail=", ".join(inventory.orphan_names[:20]),
             )

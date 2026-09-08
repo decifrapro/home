@@ -1,3 +1,6 @@
+# Gera os ícones do Decifra Pro a partir das cores da marca.
+# Rode a partir de frontend/public:  cd frontend/public && python3 ../ferramentas/gerar-icones.py
+# Requer: pip install cairosvg pillow
 import cairosvg, os
 
 ROXO = "#6B4EE6"
