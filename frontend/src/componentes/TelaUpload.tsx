@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 
 import type { ConfiguracaoPublica } from '../api/tipos'
 import { EnvioCancelado, enviarZip, type ProgressoDoEnvio } from '../upload/enviarZip'
+import { enviarZipDireto } from '../upload/enviarZipDireto'
 
 interface Props {
   configuracao: ConfiguracaoPublica
@@ -34,12 +35,21 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
     cancelamento.current = controlador
     setProgresso({ enviados: 0, total: arquivo.size, porcentagem: 0, pedacoAtual: 0, totalDePedacos: 0 })
     try {
-      const jobId = await enviarZip({
-        arquivo,
-        tamanhoDoPedaco: configuracao.uploadChunkBytes,
-        aoProgredir: setProgresso,
-        sinal: controlador.signal,
-      })
+      // Com armazenamento na nuvem o arquivo vai direto para lá; no servidor
+      // próprio ele sobe em partes pela própria API.
+      const jobId =
+        configuracao.storageMode === 'supabase'
+          ? await enviarZipDireto({
+              arquivo,
+              aoProgredir: setProgresso,
+              sinal: controlador.signal,
+            })
+          : await enviarZip({
+              arquivo,
+              tamanhoDoPedaco: configuracao.uploadChunkBytes,
+              aoProgredir: setProgresso,
+              sinal: controlador.signal,
+            })
       aoEnviar(jobId)
     } catch (falha) {
       if (falha instanceof EnvioCancelado) {
@@ -124,6 +134,14 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
           </p>
         )}
       </section>
+
+      {!configuracao.videoSupported && (
+        <p className="aviso">
+          Nesta instalação os vídeos não são analisados — eles continuam na conversa, no lugar
+          certo, com o aviso de que não foram lidos. Áudios, imagens, PDFs e links funcionam
+          normalmente.
+        </p>
+      )}
 
       {!configuracao.aiEnabled && (
         <p className="aviso">

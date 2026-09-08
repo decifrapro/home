@@ -19,7 +19,7 @@ from app.api.deps import (
 )
 from app.api.serializers import event_to_dict, job_to_dict
 from app.config import settings
-from app.jobs.worker import PARSE, PROCESS, RETRY_ALL, RETRY_ONE, Task, runner
+from app.jobs.worker import PARSE, PROCESS, RETRY_ALL, RETRY_ONE, Task, purge_expired, runner
 from app.models.schemas import EventType, JobStatus, ProcessingStatus
 from app.services import storage
 from app.services.exporters import export_json_text, export_markdown, export_txt
@@ -179,6 +179,87 @@ async def upload_complete(job_id: str, payload: UploadComplete) -> dict:
     return {"jobId": job_id, "size": total, "sha256": checksum, "status": JobStatus.UPLOADED.value}
 
 
+class UploadDireto(BaseModel):
+    filename: str = Field(max_length=400)
+    size: int = Field(ge=0)
+
+
+@router.post("/jobs/{job_id}/upload/link", dependencies=[Depends(require_access)])
+def upload_link(job_id: str, payload: UploadDireto) -> dict:
+    """Link para o navegador enviar o ZIP direto ao Supabase.
+
+    Na Vercel a requisição que chega à função é limitada a poucos megabytes, então
+    o arquivo não pode passar por ela: o celular envia direto para o armazenamento.
+    """
+    _job_or_404(job_id)
+    if settings.storage_mode != "supabase":
+        raise HTTPException(
+            status_code=409,
+            detail="Esta instalação recebe o arquivo em partes pela própria API.",
+        )
+    max_bytes = settings.max_zip_mb * 1024 * 1024
+    if payload.size > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"O ZIP tem {payload.size / 1024 / 1024:.0f} MB e o limite é {settings.max_zip_mb} MB.",
+        )
+
+    from app.repositorios.supabase import cliente
+
+    caminho = f"{job_id}/conversa.zip"
+    link = cliente().signed_upload_url(caminho)
+    db.update_job(
+        job_id,
+        status=JobStatus.UPLOADING,
+        original_filename=payload.filename.strip()[:400],
+        zip_size=payload.size,
+        error=None,
+    )
+    db.merge_job_metadata(job_id, {"zipPath": caminho})
+    return {"jobId": job_id, "path": caminho, "uploadUrl": link["signedUrl"], "token": link["token"]}
+
+
+@router.post("/jobs/{job_id}/upload/registrado", dependencies=[Depends(require_access)])
+async def upload_registrado(job_id: str) -> dict:
+    """Avisa que o envio direto terminou e já lê a conversa."""
+    job = _job_or_404(job_id)
+    if settings.storage_mode != "supabase":
+        raise HTTPException(status_code=409, detail="Endpoint válido apenas no modo Supabase.")
+    db.update_job(job_id, status=JobStatus.UPLOADED)
+    atual = db.get_job(job_id) or job
+    await runner.parse_job(atual)
+    return job_to_dict(db.get_job(job_id) or atual)
+
+
+@router.post("/jobs/{job_id}/tick", dependencies=[Depends(require_access)])
+async def tick(job_id: str) -> dict:
+    """Processa um pedaço do atendimento e conta o que ainda falta."""
+    job = _job_or_404(job_id)
+    if job.status == JobStatus.AWAITING_CONFIRMATION and not job.confirmed:
+        raise HTTPException(status_code=409, detail="Confirme o processamento antes de continuar.")
+    return await runner.tick(job)
+
+
+@router.get("/cron/tick")
+async def cron_tick(request: Request) -> dict:
+    """Chamado pelo agendamento: continua os atendimentos com o aplicativo fechado."""
+    if settings.cron_secret:
+        enviado = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if enviado != settings.cron_secret and not request.headers.get("x-vercel-cron"):
+            raise HTTPException(status_code=401, detail="Chamada não autorizada.")
+
+    db.release_stale_leases()
+    purge_expired()
+    atendidos = []
+    for job in db.jobs_in_status([JobStatus.PROCESSING, JobStatus.UPLOADED, JobStatus.PARSING])[:3]:
+        if job.status in {JobStatus.UPLOADED, JobStatus.PARSING}:
+            await runner.parse_job(job)
+            atendidos.append({"jobId": job.id, "acao": "leitura"})
+        else:
+            atendidos.append(await runner.tick(job))
+    return {"atendidos": atendidos}
+
+
 @router.get("/jobs/{job_id}", dependencies=[Depends(require_access)])
 def get_job(job_id: str) -> dict:
     return job_to_dict(_job_or_404(job_id))
@@ -234,7 +315,11 @@ async def confirm_processing(job_id: str) -> dict:
             status_code=409,
             detail="Nenhum provedor de IA configurado no servidor (defina OPENAI_API_KEY).",
         )
-    db.update_job(job_id, confirmed=True)
+    db.update_job(job_id, confirmed=True, status=JobStatus.PROCESSING)
+    if settings.serverless:
+        # Sem processo de fundo: quem toca o trabalho é o aplicativo (chamando
+        # /tick) e o agendamento automático, que continua com a aba fechada.
+        return {"jobId": job_id, "status": JobStatus.PROCESSING.value, "modo": "tick"}
     await runner.submit(Task(job_id, PROCESS))
     return {"jobId": job_id, "status": JobStatus.PROCESSING.value}
 
@@ -253,6 +338,9 @@ def cancel_job(job_id: str) -> dict:
 @router.post("/jobs/{job_id}/retry", dependencies=[Depends(require_access)])
 async def retry_failures(job_id: str) -> dict:
     _job_or_404(job_id)
+    if settings.serverless:
+        _reenfileirar(job_id)
+        return {"jobId": job_id, "status": JobStatus.PROCESSING.value, "modo": "tick"}
     await runner.submit(Task(job_id, RETRY_ALL))
     return {"jobId": job_id, "status": JobStatus.PROCESSING.value}
 
@@ -260,8 +348,28 @@ async def retry_failures(job_id: str) -> dict:
 @router.post("/jobs/{job_id}/events/{event_id}/retry", dependencies=[Depends(require_access)])
 async def retry_event(job_id: str, event_id: str) -> dict:
     _job_or_404(job_id)
+    if settings.serverless:
+        _reenfileirar(job_id, apenas=event_id)
+        return {"jobId": job_id, "eventId": event_id, "status": JobStatus.PROCESSING.value,
+                "modo": "tick"}
     await runner.submit(Task(job_id, RETRY_ONE, event_id=event_id))
     return {"jobId": job_id, "eventId": event_id, "status": JobStatus.PROCESSING.value}
+
+
+def _reenfileirar(job_id: str, apenas: str | None = None) -> None:
+    """Devolve as falhas para a fila. O conteúdo já obtido não é apagado."""
+    for evento in db.get_events(job_id, with_links=False):
+        if apenas and evento.id != apenas:
+            continue
+        if evento.processing_status == ProcessingStatus.FAILED or (apenas and evento.type.is_media):
+            db.update_event(job_id, evento.id, processing_status=ProcessingStatus.PENDING,
+                            processing_error=None)
+    for link in db.get_links(job_id):
+        if apenas and link.event_id != apenas and link.id != apenas:
+            continue
+        if link.status == ProcessingStatus.FAILED:
+            db.update_link(job_id, link.id, status=ProcessingStatus.PENDING.value, error=None)
+    db.update_job(job_id, status=JobStatus.PROCESSING, error=None)
 
 
 @router.delete("/jobs/{job_id}", dependencies=[Depends(require_access)])
@@ -269,6 +377,13 @@ def delete_job(job_id: str) -> dict:
     _job_or_404(job_id)
     runner.cancel(job_id)
     storage.purge_job(job_id)
+    if settings.storage_mode == "supabase":
+        from app.repositorios.supabase import cliente
+
+        try:
+            cliente().remove_prefix(job_id)
+        except Exception as exc:  # o banco é apagado de qualquer forma
+            logger.warning("job=%s não foi possível apagar os arquivos: %s", job_id, exc)
     db.delete_job(job_id)
     logger.info("job=%s apagado pelo usuário", job_id)
     return {"deleted": True, "jobId": job_id}

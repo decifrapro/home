@@ -7,7 +7,7 @@ import type { Evento, Job } from '../api/tipos'
 
 const ESTADOS_EM_ANDAMENTO = new Set(['uploaded', 'parsing', 'processing'])
 
-export function useJob(jobId: string | null, intervaloMs = 2000) {
+export function useJob(jobId: string | null, intervaloMs = 2000, empurrar = false) {
   const [job, setJob] = useState<Job | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(false)
@@ -35,9 +35,22 @@ export function useJob(jobId: string | null, intervaloMs = 2000) {
     setCarregando(true)
 
     const rodar = async () => {
-      const atual = await atualizar()
+      let atual = await atualizar()
       if (!ativo) return
       setCarregando(false)
+
+      // Quando o servidor não tem processo de fundo (Vercel), é o aplicativo que
+      // pede o próximo pedaço de trabalho a cada volta.
+      if (atual && empurrar && atual.status === 'processing') {
+        try {
+          await api.tick(atual.id)
+        } catch {
+          /* o agendamento automático continua de qualquer forma */
+        }
+        if (!ativo) return
+        atual = await atualizar()
+      }
+
       if (atual && ESTADOS_EM_ANDAMENTO.has(atual.status)) {
         temporizador.current = window.setTimeout(rodar, intervaloMs)
       }
@@ -48,7 +61,7 @@ export function useJob(jobId: string | null, intervaloMs = 2000) {
       ativo = false
       if (temporizador.current) window.clearTimeout(temporizador.current)
     }
-  }, [jobId, intervaloMs, atualizar])
+  }, [jobId, intervaloMs, atualizar, empurrar])
 
   return { job, erro, carregando, atualizar }
 }

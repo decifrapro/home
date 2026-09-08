@@ -30,13 +30,19 @@ logger = logging.getLogger("decifra")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.connect()
-    purge_expired()
-    await runner.start()
+    if not settings.serverless:
+        # Servidor próprio: existe processo de pé, então o worker roda aqui.
+        purge_expired()
+        await runner.start()
     logger.info(
-        "%s no ar — ia=%s dados=%s", settings.app_name, settings.ai_enabled, settings.data_dir
+        "%s no ar — ia=%s guarda=%s",
+        settings.app_name,
+        settings.ai_enabled,
+        db.backend,
     )
     yield
-    await runner.stop()
+    if not settings.serverless:
+        await runner.stop()
 
 
 app = FastAPI(

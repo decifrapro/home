@@ -18,6 +18,8 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 
 ## Índice
 
+- [Dois jeitos de rodar](#dois-jeitos-de-rodar)
+- [Publicar na Vercel com Supabase (passo a passo)](#publicar-na-vercel-com-supabase-passo-a-passo)
 - [Requisitos](#requisitos)
 - [Rodar com Docker](#rodar-com-docker)
 - [Rodar em desenvolvimento](#rodar-em-desenvolvimento)
@@ -33,6 +35,88 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 - [Testes](#testes)
 - [Solução de problemas](#solução-de-problemas)
 - [Privacidade](#privacidade)
+
+---
+
+## Dois jeitos de rodar
+
+O mesmo código roda de duas formas. A diferença está no que a máquina por baixo
+permite fazer.
+
+| | **Vercel + Supabase** | **Servidor próprio** (Docker, VPS) |
+| --- | --- | --- |
+| Texto, áudio, imagem, PDF, link | ✅ | ✅ |
+| Vídeo | ❌ fica marcado como não analisado | ✅ transcrito e descrito |
+| Áudio muito longo (acima de 24 MB) | ❌ fica de fora, com aviso | ✅ dividido e transcrito inteiro |
+| Onde ficam os dados | Supabase (banco e arquivos) | disco do servidor |
+| Processa com o app fechado | ✅ pelo agendamento automático | ✅ pelo processo do servidor |
+| Custo de hospedagem | o que você já paga | a partir de uns US$ 5/mês |
+
+O motivo da diferença é uma só ferramenta: o **FFmpeg**, que corta áudio e extrai
+cenas de vídeo. Ele precisa estar instalado na máquina, e a Vercel não permite
+instalar programas assim. Sem ele, o áudio do WhatsApp ainda é transcrito — o
+`.opus` é enviado como `.ogg`, sem conversão nenhuma — mas vídeo não tem como.
+
+Você escolhe preenchendo (ou não) as variáveis do Supabase. Sem elas, o sistema
+usa disco e banco locais; com elas, passa a usar o Supabase.
+
+---
+
+## Publicar na Vercel com Supabase (passo a passo)
+
+Escrito para ser seguido sem saber programar. São uns 15 minutos.
+
+### 1. Preparar o Supabase (guarda os arquivos e os dados)
+
+1. Entre em <https://supabase.com> e abra um projeto — pode ser um que você já
+   tenha. Nada aqui atrapalha outro sistema: as tabelas começam com `decifra_` e
+   os arquivos ficam num espaço separado.
+2. No menu lateral, abra **SQL Editor** → **New query**.
+3. Abra o arquivo `supabase/migrations/0001_decifra.sql` deste repositório, copie
+   tudo, cole na janela e clique em **Run**. Deve aparecer "Success".
+4. Vá em **Project Settings → API** e guarde dois valores:
+   - **Project URL** (algo como `https://abcdefgh.supabase.co`);
+   - a chave **service_role** (a secreta, não a `anon`).
+
+> A chave `service_role` dá acesso total ao projeto. Ela vai **só** no painel da
+> Vercel, nunca em arquivo do repositório e nunca no navegador.
+
+### 2. Publicar na Vercel
+
+1. Em <https://vercel.com>, clique em **Add New → Project** e escolha este
+   repositório.
+2. Não mexa em nada na tela de build: o arquivo `vercel.json` já diz o que fazer.
+3. Antes de clicar em **Deploy**, abra **Environment Variables** e cadastre:
+
+   | Nome | Valor |
+   | --- | --- |
+   | `SUPABASE_URL` | a Project URL do passo 1 |
+   | `SUPABASE_SERVICE_ROLE_KEY` | a chave service_role do passo 1 |
+   | `OPENAI_API_KEY` | sua chave da OpenAI |
+   | `APP_ACCESS_PASSWORD` | uma senha sua, para o site não ficar aberto |
+   | `APP_SESSION_SECRET` | qualquer texto longo e aleatório |
+   | `MAX_JOB_COST_USD` | teto de gasto por conversa (ex.: `5`) |
+
+4. Clique em **Deploy** e espere. No fim, abra o endereço que a Vercel mostrar.
+
+### 3. Conferir se ficou tudo certo
+
+- Abra `https://seu-endereco.vercel.app/api/health` — deve aparecer
+  `{"status":"ok", ...}`.
+- Abra o site, digite a senha e envie um ZIP pequeno de conversa.
+
+### Sobre o plano da Vercel
+
+O `vercel.json` já vem com o agendamento que continua o processamento quando o
+aplicativo está fechado, rodando **a cada minuto**. Isso exige o plano Pro. No
+plano gratuito (Hobby), a Vercel só aceita agendamento **uma vez por dia**: mude
+a linha `"schedule": "* * * * *"` para `"schedule": "0 3 * * *"`. O sistema
+continua funcionando — só que o processamento anda enquanto o aplicativo estiver
+aberto na tela, o que para uma conversa normal leva poucos minutos.
+
+O tempo máximo de cada chamada também muda: `maxDuration: 300` é do plano Pro.
+No Hobby, troque para `60`. O processamento é feito em blocos justamente para
+caber nos dois casos.
 
 ---
 
@@ -212,12 +296,18 @@ bloqueia o uso.
 
 ## Publicar
 
-Este sistema **não roda em Vercel nem em GitHub Pages**. Ele precisa de
-processamento de arquivos grandes, jobs longos em background, FFmpeg instalado,
-disco persistente e segredos no servidor — nada disso existe em hospedagem
-estática ou em funções serverless de curta duração.
+Duas opções, conforme a tabela de [Dois jeitos de rodar](#dois-jeitos-de-rodar).
 
-Ele roda em qualquer host que aceite um container Docker com volume:
+**Vercel + Supabase** — o caminho mais simples se você já usa esses dois
+serviços: siga [o passo a passo acima](#publicar-na-vercel-com-supabase-passo-a-passo).
+Vale lembrar do que fica de fora ali: vídeo não é analisado e áudio acima de
+24 MB não é transcrito, porque a Vercel não permite instalar o FFmpeg.
+
+**Servidor próprio** — para ter tudo, inclusive vídeo. Note que **GitHub Pages
+não serve**: ele publica só páginas paradas, e aqui é preciso receber arquivo
+grande, converter mídia e rodar tarefa longa.
+
+Roda em qualquer host que aceite um container Docker com volume:
 
 **Railway / Render / Fly.io**
 

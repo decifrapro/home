@@ -7,11 +7,13 @@ usuário decidir se quer gastar antes de o processamento começar.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from app.config import Settings
 from app.models.schemas import CostBreakdown, CostEstimate, Event, EventType, LinkItem
-from app.services.media import probe
+from app.services.media import disponivel as ffmpeg_disponivel
+from app.services.media import estimar_duracao, probe
 
 logger = logging.getLogger(__name__)
 
@@ -68,23 +70,34 @@ def pdf_pages_needing_vision(path: Path, settings: Settings) -> tuple[int, int]:
 async def estimate_job(
     events: list[Event],
     links: list[LinkItem],
-    extract_root: Path,
     settings: Settings,
+    obter_caminho: Callable[[Event], Path | None] | None = None,
 ) -> CostEstimate:
-    """Percorre as mídias pendentes e calcula quanto custaria processá-las."""
+    """Percorre as mídias pendentes e calcula quanto custaria processá-las.
+
+    Quando `obter_caminho` é dado (servidor próprio, arquivos em disco), a conta
+    usa a duração real do áudio e o número de páginas de PDF que precisam de
+    visão. Sem ele (Vercel, arquivos no Supabase), a conta é feita pelo tamanho
+    do arquivo — mais grosseira, e o texto na tela avisa isso.
+    """
     estimate = CostEstimate(cap_usd=settings.max_job_cost_usd)
     breakdown = CostBreakdown()
 
     for event in events:
         if not event.attachment_path:
             continue
-        path = extract_root / event.attachment_path
-        if not path.exists():
+        path = obter_caminho(event) if obter_caminho else None
+        if obter_caminho and (path is None or not path.exists()):
+            continue
+        if path is None:
+            _estimar_sem_arquivo(event, estimate, breakdown, settings)
             continue
 
         if event.type == EventType.AUDIO:
             info = await probe(path)
-            seconds = info.duration_seconds or 0
+            seconds = info.duration_seconds or estimar_duracao(
+                path.stat().st_size, event.detected_mime
+            )
             estimate.audio_seconds += seconds
             breakdown.audio_usd += transcription_cost(settings, seconds)
         elif event.type == EventType.IMAGE:
@@ -95,6 +108,8 @@ async def estimate_job(
             estimate.pdf_pages += total
             breakdown.pdf_usd += _image_estimate(settings, poor)
         elif event.type == EventType.VIDEO:
+            if not ffmpeg_disponivel():
+                continue  # vídeo não é analisado nesta instalação: não custa nada
             info = await probe(path)
             seconds = info.duration_seconds or 0
             frames = min(settings.video_max_frames, max(3, int(seconds // 20) + 3))
@@ -119,6 +134,16 @@ async def estimate_job(
         estimate.notes.append(
             "A leitura de links é feita no próprio servidor e não consome crédito de IA."
         )
+    if any(event.type == EventType.PDF for event in events):
+        estimate.notes.append(
+            "PDFs entram por leitura de texto, que é gratuita. Se alguma página for "
+            "escaneada, ela passa por visão e aparece no custo real no fim."
+        )
+    if not ffmpeg_disponivel():
+        estimate.notes.append(
+            "Esta instalação roda sem FFmpeg: vídeos não são analisados e áudios muito "
+            "grandes ficam de fora, então eles não entram na conta."
+        )
     if estimate.pdf_pages:
         estimate.notes.append(
             "Páginas de PDF com texto extraível são lidas localmente, sem custo; "
@@ -130,6 +155,25 @@ async def estimate_job(
             "O processamento vai parar ao atingir o teto e o atendimento ficará parcial."
         )
     return estimate
+
+
+def _estimar_sem_arquivo(
+    event: Event, estimate: CostEstimate, breakdown: CostBreakdown, settings: Settings
+) -> None:
+    """Conta aproximada quando o arquivo não está em disco: vale o tamanho dele."""
+    tamanho = int((event.metadata or {}).get("file_size") or 0)
+    if event.type == EventType.AUDIO:
+        segundos = estimar_duracao(tamanho, event.detected_mime)
+        estimate.audio_seconds += segundos
+        breakdown.audio_usd += transcription_cost(settings, segundos)
+    elif event.type == EventType.IMAGE:
+        estimate.images += 1
+        breakdown.image_usd += _image_estimate(settings, 1)
+    elif event.type == EventType.PDF:
+        # Sem abrir o arquivo não dá para saber quantas páginas precisam de visão.
+        # A leitura de texto é gratuita, então a estimativa fica em zero e o aviso
+        # na tela explica que página escaneada pode custar.
+        estimate.pdf_pages += 0
 
 
 def add_cost(total: CostBreakdown, category: str, amount: float) -> CostBreakdown:

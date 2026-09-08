@@ -156,4 +156,7 @@ export interface ConfiguracaoPublica {
   jobRetentionHours: number
   autoConfirmProcessing: boolean
   authenticated: boolean
+  storageMode: 'local' | 'supabase'
+  ffmpegAvailable: boolean
+  videoSupported: boolean
 }

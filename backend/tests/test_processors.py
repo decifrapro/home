@@ -357,3 +357,54 @@ async def test_provedor_nao_repete_em_erro_permanente(tmp_path):
 
 async def _no_sleep(_seconds):
     return None
+
+
+# ── Modo sem FFmpeg (Vercel) ────────────────────────────────────────────────
+async def test_sem_ffmpeg_o_opus_vai_direto_como_ogg(tmp_path, monkeypatch):
+    """Na Vercel não há FFmpeg: o .opus é enviado como .ogg, sem conversão."""
+    monkeypatch.setattr("app.processors.audio.ffmpeg_disponivel", lambda: False)
+    monkeypatch.setattr("app.services.media.disponivel", lambda: False)
+
+    provider = FakeProvider(transcript="boa tarde seu Rui")
+    context = make_context(tmp_path, provider)
+    event = make_event(tmp_path, "audio.opus", EventType.AUDIO, "audio/ogg")
+
+    outcome = await AudioProcessor().process(event, context)
+
+    assert outcome.status == ProcessingStatus.DONE
+    assert outcome.text == "boa tarde seu Rui"
+    assert provider.transcribe_calls[0].suffix == ".ogg"
+    assert outcome.metadata["duration_seconds"] > 0  # estimada pelo tamanho
+
+
+async def test_sem_ffmpeg_audio_grande_demais_fica_avisado(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.processors.audio.ffmpeg_disponivel", lambda: False)
+    monkeypatch.setattr("app.services.media.disponivel", lambda: False)
+
+    grande = tmp_path / "extraido" / "grande.opus"
+    grande.parent.mkdir(parents=True, exist_ok=True)
+    grande.write_bytes(b"OggS" + b"\0" * (2 * 1024 * 1024))
+
+    context = make_context(tmp_path, audio_max_upload_mb=1)
+    event = Event(
+        id="e", index=0, raw_timestamp="x", type=EventType.AUDIO,
+        attachment_name="grande.opus", attachment_path="grande.opus",
+        detected_mime="audio/ogg", processing_status=ProcessingStatus.PENDING,
+    )
+
+    outcome = await AudioProcessor().process(event, context)
+
+    assert outcome.status == ProcessingStatus.UNSUPPORTED
+    assert "não divide arquivos grandes" in outcome.error
+
+
+async def test_sem_ffmpeg_video_fica_marcado_com_o_motivo(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.processors.video.ffmpeg_disponivel", lambda: False)
+    context = make_context(tmp_path)
+    event = make_event(tmp_path, "video.mp4", EventType.VIDEO, "video/mp4")
+
+    outcome = await VideoProcessor().process(event, context)
+
+    assert outcome.status == ProcessingStatus.UNSUPPORTED
+    assert "sem FFmpeg" in outcome.error
+    assert outcome.cost_usd == 0

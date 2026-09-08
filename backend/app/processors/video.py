@@ -17,7 +17,15 @@ from app.services.cost import (
     transcription_cost,
     vision_call_cost,
 )
-from app.services.media import MediaToolError, extract_audio_track, extract_frames, probe
+from app.services.media import (
+    MediaToolError,
+    extract_audio_track,
+    extract_frames,
+    probe,
+)
+from app.services.media import (
+    disponivel as ffmpeg_disponivel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +40,18 @@ class VideoProcessor(MediaProcessor):
             return ProcessingOutcome(
                 status=ProcessingStatus.UNRESOLVED,
                 error="Arquivo de vídeo não encontrado no ZIP.",
+                category=self.category,
+            )
+
+        if not ffmpeg_disponivel():
+            return ProcessingOutcome(
+                status=ProcessingStatus.UNSUPPORTED,
+                error=(
+                    "Vídeo não é analisado nesta instalação, que roda sem FFmpeg. "
+                    "O arquivo continua na conversa, na posição certa, apenas sem "
+                    "transcrição e sem descrição."
+                ),
+                metadata={"reason": "sem_ffmpeg"},
                 category=self.category,
             )
 

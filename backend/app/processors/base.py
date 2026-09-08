@@ -8,6 +8,7 @@ pode ser reprocessado sozinho.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,10 +52,14 @@ class ProcessingContext:
     provider: AIProvider
     budget: Budget
     conversation_hint: str | None = None
+    # Quando o arquivo não está no disco (Vercel), quem sabe buscá-lo é esta função.
+    obter_midia: Callable[[Event], Path | None] | None = None
 
     def media_path(self, event: Event) -> Path | None:
         if not event.attachment_path:
             return None
+        if self.obter_midia is not None:
+            return self.obter_midia(event)
         path = self.extract_root / event.attachment_path
         return path if path.exists() else None
 

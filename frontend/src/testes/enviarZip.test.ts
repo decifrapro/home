@@ -136,3 +136,82 @@ describe('enviarZip', () => {
     ).rejects.toThrow('O ZIP tem 900 MB e o limite é 500 MB.')
   })
 })
+
+describe('enviarZipDireto (modo nuvem)', () => {
+  it('pede o link, envia o arquivo direto e avisa o servidor', async () => {
+    const { enviarZipDireto } = await import('../upload/enviarZipDireto')
+    const chamadas: string[] = []
+    const progresso: number[] = []
+
+    const requisitar = vi.fn(async (url: string) => {
+      chamadas.push(url)
+      if (url === '/api/jobs') return respostaOk({ id: 'job9' })
+      if (url.includes('/upload/link')) {
+        return respostaOk({ uploadUrl: 'https://projeto.supabase.co/enviar?token=abc' })
+      }
+      return respostaOk({ id: 'job9', status: 'awaiting_confirmation' })
+    }) as unknown as typeof fetch
+
+    const enviarArquivo = vi.fn(async (url: string, arquivo: File, aoProgredir?: (e: number, t: number) => void) => {
+      expect(url).toContain('token=abc')
+      aoProgredir?.(arquivo.size / 2, arquivo.size)
+      aoProgredir?.(arquivo.size, arquivo.size)
+    })
+
+    const jobId = await enviarZipDireto({
+      arquivo: arquivoFalso(1000),
+      requisitar,
+      enviarArquivo,
+      aoProgredir: (info) => progresso.push(info.porcentagem),
+    })
+
+    expect(jobId).toBe('job9')
+    expect(chamadas).toEqual([
+      '/api/jobs',
+      '/api/jobs/job9/upload/link',
+      '/api/jobs/job9/upload/registrado',
+    ])
+    expect(progresso).toEqual([50, 100])
+    expect(enviarArquivo).toHaveBeenCalledOnce()
+  })
+
+  it('mostra a mensagem do servidor quando o ZIP passa do limite', async () => {
+    const { enviarZipDireto } = await import('../upload/enviarZipDireto')
+    const requisitar = vi.fn(async (url: string) => {
+      if (url === '/api/jobs') return respostaOk({ id: 'job9' })
+      return new Response(JSON.stringify({ detail: 'O ZIP tem 900 MB e o limite é 500 MB.' }), {
+        status: 413,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    await expect(
+      enviarZipDireto({ arquivo: arquivoFalso(10), requisitar, enviarArquivo: async () => {} }),
+    ).rejects.toThrow('O ZIP tem 900 MB e o limite é 500 MB.')
+  })
+
+  it('não avisa o servidor se o envio for cancelado', async () => {
+    const { enviarZipDireto } = await import('../upload/enviarZipDireto')
+    const { EnvioCancelado } = await import('../upload/enviarZip')
+    const controlador = new AbortController()
+    const chamadas: string[] = []
+
+    const requisitar = vi.fn(async (url: string) => {
+      chamadas.push(url)
+      if (url === '/api/jobs') return respostaOk({ id: 'job9' })
+      return respostaOk({ uploadUrl: 'https://projeto.supabase.co/enviar?token=abc' })
+    }) as unknown as typeof fetch
+
+    await expect(
+      enviarZipDireto({
+        arquivo: arquivoFalso(10),
+        requisitar,
+        sinal: controlador.signal,
+        enviarArquivo: async () => {
+          controlador.abort()
+        },
+      }),
+    ).rejects.toBeInstanceOf(EnvioCancelado)
+    expect(chamadas.some((url) => url.includes('registrado'))).toBe(false)
+  })
+})

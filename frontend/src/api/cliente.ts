@@ -62,6 +62,12 @@ export const api = {
 
   confirmar: (id: string) => pedir<{ status: string }>(`/api/jobs/${id}/confirm`, { method: 'POST' }),
 
+  /** Empurra um pedaço do processamento (modo Vercel, sem processo de fundo). */
+  tick: (id: string) =>
+    pedir<{ status: string; processados: number; restantes: number }>(`/api/jobs/${id}/tick`, {
+      method: 'POST',
+    }),
+
   cancelar: (id: string) => pedir<Job>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
 
   reprocessarTudo: (id: string) => pedir<{ status: string }>(`/api/jobs/${id}/retry`, { method: 'POST' }),

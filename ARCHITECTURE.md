@@ -20,6 +20,55 @@ A fase 1 não faz nenhuma chamada de IA e não custa dinheiro. A fase 2 preenche
 o campo de conteúdo processado de cada evento, um processador por tipo de mídia,
 sem nunca mexer no conteúdo original.
 
+## Dois modos de execução
+
+O mesmo código roda em dois lugares diferentes, e a escolha é feita por
+configuração — sem ramificação de projeto, sem código duplicado.
+
+```
+                    ┌──────────────── SEM Supabase configurado ───────────────┐
+                    │  banco: SQLite em disco                                 │
+                    │  arquivos: ZIP descompactado em /data/jobs/<id>         │
+   app/db.py ──────►│  trabalho: worker de fundo, no mesmo processo           │
+   (despachante)    │  mídia: FFmpeg presente — vídeo e áudio longo funcionam │
+                    └─────────────────────────────────────────────────────────┘
+                    ┌──────────────── COM Supabase configurado ───────────────┐
+                    │  banco: tabelas decifra_* no Supabase                   │
+                    │  arquivos: ZIP no Storage, lido por faixas de bytes     │
+                    │  trabalho: /api/tick em blocos + agendamento a cada min │
+                    │  mídia: sem FFmpeg — .opus vai como .ogg; vídeo avisado │
+                    └─────────────────────────────────────────────────────────┘
+```
+
+O que muda de fato:
+
+| Peça | Servidor próprio | Vercel + Supabase |
+| --- | --- | --- |
+| Guarda dos dados | `app/repositorios/sqlite.py` | `app/repositorios/supabase.py` |
+| Origem dos arquivos | `FonteLocal` (disco) | `FonteSupabase` (faixas de bytes) |
+| Envio do ZIP | em partes pela API | direto do navegador para o Storage |
+| Motor do trabalho | `JobRunner.process_job` | `JobRunner.tick`, em blocos com reserva |
+| Reserva de item | trava local | `UPDATE ... RETURNING` condicional |
+
+O parser, a associação de anexos, os processadores, a cobertura, o custo e os
+exports são exatamente os mesmos nos dois modos.
+
+### Por que ler o ZIP por faixas
+
+Um ZIP guarda o índice no fim do arquivo. Dá para ler esse índice com uma
+requisição pequena e, depois, pedir só os bytes da mídia que está sendo
+processada naquele instante. Assim uma conversa de 115 MB é lida numa função que
+tem poucos segundos e pouca memória, sem nunca baixar o arquivo inteiro
+(`app/services/remote_zip.py`).
+
+### Por que processar em blocos
+
+A função da Vercel morre em 60 s (plano gratuito) ou 300 s (Pro). Em vez de uma
+chamada longa, cada chamada de `/api/tick` avança alguns itens e devolve quantos
+faltam. Duas coisas empurram esses blocos: o aplicativo aberto na tela e o
+agendamento automático — por isso cada item é **reservado** antes de ser
+processado, e o mesmo áudio nunca é transcrito (nem cobrado) duas vezes.
+
 ## Um servidor só
 
 ```

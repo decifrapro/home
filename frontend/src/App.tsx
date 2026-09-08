@@ -27,7 +27,7 @@ export function App() {
   const [verConversa, setVerConversa] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const { tema, alternar } = useTema()
-  const { job, atualizar } = useJob(jobId)
+  const { job, atualizar } = useJob(jobId, 2000, configuracao?.storageMode === 'supabase')
 
   const carregarConfiguracao = useCallback(async () => {
     try {

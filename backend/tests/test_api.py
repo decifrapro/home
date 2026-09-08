@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-
 import pytest
 
 from app import db
@@ -139,34 +137,15 @@ def test_cancelamento_marca_o_job(client):
 @pytest.fixture
 def client_com_senha(monkeypatch):
     """Sobe a aplicação com o gate de senha ligado."""
-    import os
-
     from fastapi.testclient import TestClient
 
-    os.environ["APP_ACCESS_PASSWORD"] = "segredo-de-teste"
-    os.environ["APP_SESSION_SECRET"] = "chave-de-assinatura-de-teste"
-    from app import config as config_module
+    from app.main import app
 
-    config_module.get_settings.cache_clear()
-    importlib.reload(config_module)
+    monkeypatch.setattr("app.config.settings.app_access_password", "segredo-de-teste")
+    monkeypatch.setattr("app.config.settings.app_session_secret", "chave-de-assinatura-de-teste")
 
-    import app.api.deps as deps
-    import app.api.routes as routes
-    import app.main as main
-
-    importlib.reload(deps)
-    importlib.reload(routes)
-    importlib.reload(main)
-
-    with TestClient(main.app) as test_client:
+    with TestClient(app) as test_client:
         yield test_client
-
-    del os.environ["APP_ACCESS_PASSWORD"]
-    config_module.get_settings.cache_clear()
-    importlib.reload(config_module)
-    importlib.reload(deps)
-    importlib.reload(routes)
-    importlib.reload(main)
 
 
 def test_gate_por_senha_bloqueia_e_libera(client_com_senha):

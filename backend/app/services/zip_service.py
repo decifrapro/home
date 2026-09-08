@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -160,30 +161,40 @@ def read_text_file(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def score_txt_candidate(path: Path) -> tuple[int, int]:
+def score_text(content: str) -> tuple[int, int]:
     """Pontua um TXT: quantas linhas começam com timestamp válido, e seu tamanho."""
-    try:
-        content = read_text_file(path)
-    except OSError:
-        return (0, 0)
     lines = content.splitlines()
     valid = sum(1 for line in lines[:5000] if _TIMESTAMP_LINE.match(line.lstrip("‎‏﻿")))
     return (valid, len(content))
 
 
+def score_txt_candidate(path: Path) -> tuple[int, int]:
+    try:
+        return score_text(read_text_file(path))
+    except OSError:
+        return (0, 0)
+
+
 def choose_main_txt(
-    candidates: list[CatalogFile], root: Path
+    candidates: list[CatalogFile], ler_texto: Callable[[str], str]
 ) -> tuple[CatalogFile | None, list[dict]]:
     """Escolhe o TXT principal da exportação.
 
     Heurística, nesta ordem: quantidade de linhas com timestamp válido, depois
     tamanho do arquivo. A escolha e as alternativas ficam registradas.
+
+    `ler_texto` recebe o caminho dentro do ZIP e devolve o conteúdo — assim a
+    escolha funciona tanto com o ZIP já aberto em disco quanto com o ZIP que
+    mora no Supabase.
     """
     if not candidates:
         return None, []
     scored = []
     for candidate in candidates:
-        valid, size = score_txt_candidate(root / candidate.relative_path)
+        try:
+            valid, size = score_text(ler_texto(candidate.relative_path))
+        except Exception:
+            valid, size = (0, 0)
         scored.append((valid, size, candidate))
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
     best = scored[0]

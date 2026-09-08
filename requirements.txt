@@ -1,0 +1,13 @@
+# Dependências da função da Vercel.
+# Sem uvicorn (a Vercel cuida do servidor) e sem python-magic (precisa de uma
+# biblioteca do sistema que não existe lá; a detecção por assinatura de bytes,
+# que é a principal, continua funcionando).
+fastapi==0.141.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-multipart==0.0.32
+itsdangerous==2.2.0
+httpx==0.28.1
+PyMuPDF==1.28.2
+Pillow==11.3.0
+selectolax==0.3.34

@@ -9,21 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
+from pathlib import Path
 
+from app import db
 from app.config import settings
-from app.db import (
-    get_events,
-    get_job,
-    get_links,
-    merge_job_metadata,
-    replace_events,
-    replace_files,
-    replace_links,
-    update_event,
-    update_job,
-    update_link,
-)
 from app.models.schemas import (
     CostBreakdown,
     Event,
@@ -41,8 +32,9 @@ from app.providers import build_provider
 from app.services import storage
 from app.services.cost import add_cost, estimate_job
 from app.services.coverage import compute_coverage
+from app.services.fonte_zip import FonteLocal, FonteSupabase, FonteZip, nome_temporario
 from app.services.timeline import build_timeline
-from app.services.zip_service import ZipRejected, choose_main_txt, extract_zip, read_text_file
+from app.services.zip_service import ZipRejected, choose_main_txt
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +78,11 @@ class JobRunner:
 
     def pending_tasks(self) -> list[Task]:
         """Jobs que ficaram pela metade quando o servidor caiu."""
-        from app.db import jobs_in_status
-
         tasks = [
             Task(job.id, PARSE)
-            for job in jobs_in_status([JobStatus.UPLOADED, JobStatus.PARSING])
+            for job in db.jobs_in_status([JobStatus.UPLOADED, JobStatus.PARSING])
         ]
-        tasks += [Task(job.id, PROCESS) for job in jobs_in_status([JobStatus.PROCESSING])]
+        tasks += [Task(job.id, PROCESS) for job in db.jobs_in_status([JobStatus.PROCESSING])]
         return tasks
 
     async def resume_pending(self) -> None:
@@ -121,7 +111,7 @@ class JobRunner:
                 raise
             except Exception as exc:
                 logger.exception("job=%s falha inesperada no worker", task.job_id)
-                update_job(task.job_id, status=JobStatus.FAILED, error=_sanitize(str(exc)))
+                db.update_job(task.job_id, status=JobStatus.FAILED, error=_sanitize(str(exc)))
             finally:
                 self._current = None
                 self._queue.task_done()
@@ -138,7 +128,7 @@ class JobRunner:
 
     # ── execução ────────────────────────────────────────────────────────────
     async def _run(self, task: Task) -> None:
-        job = get_job(task.job_id)
+        job = db.get_job(task.job_id)
         if job is None:
             return
         if task.action == PARSE:
@@ -150,27 +140,52 @@ class JobRunner:
         elif task.action == RETRY_ONE and task.event_id:
             await self.process_job(job, retry_failed=True, only_event=task.event_id)
 
+    # ── de onde vêm os arquivos ─────────────────────────────────────────────
+    def fonte(self, job: Job) -> FonteZip:
+        """ZIP no disco (servidor próprio) ou no Supabase (Vercel)."""
+        if settings.storage_mode == "supabase":
+            from app.repositorios.supabase import cliente
+
+            caminho = str(job.metadata.get("zipPath") or f"{job.id}/conversa.zip")
+            return FonteSupabase(cliente(), caminho, settings)
+        return FonteLocal(storage.zip_path(job.id), storage.extract_dir(job.id), settings)
+
+    def _buscador_de_midia(self, job_id: str, fonte: FonteZip):
+        """Função que entrega o arquivo da mídia no disco temporário, sob demanda."""
+
+        def obter(event: Event) -> Path | None:
+            if not event.attachment_path:
+                return None
+            destino = nome_temporario(job_id, event.attachment_path, storage.work_dir(job_id))
+            try:
+                return fonte.obter(event.attachment_path, destino)
+            except Exception as exc:
+                logger.warning("job=%s não foi possível trazer a mídia: %s", job_id, exc)
+                return None
+
+        return obter
+
     # ── fase 1: motor ───────────────────────────────────────────────────────
     async def parse_job(self, job: Job) -> None:
         """Descompacta, lê o TXT e monta a timeline. Nenhuma chamada de IA aqui."""
         job_id = job.id
-        update_job(job_id, status=JobStatus.PARSING, error=None)
+        db.update_job(job_id, status=JobStatus.PARSING, error=None)
         extract_root = storage.extract_dir(job_id)
-        zip_file = storage.zip_path(job_id)
+        fonte = self.fonte(job)
 
         try:
-            extraction = await asyncio.to_thread(extract_zip, zip_file, extract_root, settings)
+            extraction = await asyncio.to_thread(fonte.catalogar)
         except ZipRejected as exc:
             logger.warning("job=%s zip recusado code=%s", job_id, exc.code)
-            update_job(job_id, status=JobStatus.FAILED, error=exc.message)
+            db.update_job(job_id, status=JobStatus.FAILED, error=exc.message)
             return
         except FileNotFoundError:
-            update_job(job_id, status=JobStatus.FAILED, error="O arquivo enviado não foi encontrado.")
+            db.update_job(job_id, status=JobStatus.FAILED, error="O arquivo enviado não foi encontrado.")
             return
 
-        main_txt, choice_log = choose_main_txt(extraction.txt_candidates, extract_root)
+        main_txt, choice_log = choose_main_txt(extraction.txt_candidates, fonte.ler_texto)
         if main_txt is None:
-            update_job(
+            db.update_job(
                 job_id,
                 status=JobStatus.FAILED,
                 error=(
@@ -180,13 +195,13 @@ class JobRunner:
             )
             return
 
-        content = await asyncio.to_thread(read_text_file, extract_root / main_txt.relative_path)
+        content = await asyncio.to_thread(fonte.ler_texto, main_txt.relative_path)
         parse_result = parse_chat(content)
         timeline = build_timeline(parse_result, extraction.files, extract_root, main_txt.relative_path)
 
-        replace_files(job_id, timeline.files)
-        replace_events(job_id, timeline.events)
-        replace_links(job_id, timeline.links)
+        db.replace_files(job_id, timeline.files)
+        db.replace_events(job_id, timeline.events)
+        db.replace_links(job_id, timeline.links)
 
         stamps = [event.timestamp for event in timeline.events if event.timestamp]
         coverage = compute_coverage(timeline.events, timeline.links)
@@ -197,10 +212,11 @@ class JobRunner:
             "filesInZip": len(extraction.files),
             "uncompressedBytes": extraction.total_uncompressed,
             "aiEnabled": settings.ai_enabled,
+            "ffmpeg": settings.storage_mode != "supabase",
         }
 
-        merge_job_metadata(job_id, metadata)
-        update_job(
+        db.merge_job_metadata(job_id, metadata)
+        db.update_job(
             job_id,
             inventory=timeline.inventory,
             coverage=coverage,
@@ -228,21 +244,186 @@ class JobRunner:
                         ),
                     )
                 )
-                update_job(job_id, status=JobStatus.PARTIAL, warnings=warnings)
+                db.update_job(job_id, status=JobStatus.PARTIAL, warnings=warnings)
             else:
-                update_job(job_id, status=JobStatus.COMPLETED, warnings=warnings)
+                db.update_job(job_id, status=JobStatus.COMPLETED, warnings=warnings)
             return
 
-        estimate = await estimate_job(timeline.events, timeline.links, extract_root, settings)
-        update_job(job_id, estimate=estimate)
+        obter_caminho = None if settings.serverless else (lambda evento: extract_root / evento.attachment_path)
+        estimate = await estimate_job(timeline.events, timeline.links, settings, obter_caminho)
+        db.update_job(job_id, estimate=estimate)
 
         if settings.auto_confirm_processing:
-            update_job(job_id, confirmed=True)
-            refreshed = get_job(job_id)
+            db.update_job(job_id, confirmed=True)
+            refreshed = db.get_job(job_id)
             if refreshed:
                 await self.process_job(refreshed)
         else:
-            update_job(job_id, status=JobStatus.AWAITING_CONFIRMATION)
+            db.update_job(job_id, status=JobStatus.AWAITING_CONFIRMATION)
+
+    def montar_contexto(
+        self, job: Job, events: list[Event], provider, fonte: FonteZip | None = None
+    ) -> ProcessingContext:
+        """Contexto que os processadores recebem, igual nos dois modos de execução."""
+        return ProcessingContext(
+            job_id=job.id,
+            extract_root=storage.extract_dir(job.id),
+            work_root=storage.work_dir(job.id),
+            settings=settings,
+            provider=provider,
+            budget=Budget(cap_usd=settings.max_job_cost_usd, spent_usd=job.cost.total_usd),
+            conversation_hint=_conversation_hint(events),
+            obter_midia=self._buscador_de_midia(job.id, fonte) if fonte is not None else None,
+        )
+
+    # ── processamento em blocos curtos (Vercel) ─────────────────────────────
+    async def tick(
+        self, job: Job, *, budget_seconds: int | None = None, max_items: int | None = None
+    ) -> dict:
+        """Processa um punhado de itens e devolve o que ainda falta.
+
+        É o formato que cabe numa função de curta duração: em vez de segurar o
+        trabalho inteiro numa chamada só, cada chamada avança um pedaço. Cada
+        item é reservado antes, então duas chamadas ao mesmo tempo — a do
+        aplicativo aberto e a do agendamento automático — nunca processam o
+        mesmo áudio duas vezes.
+        """
+        limite_tempo = budget_seconds or settings.tick_budget_seconds
+        limite_itens = max_items or settings.tick_max_items
+        comeco = time.monotonic()
+        job_id = job.id
+
+        if job.status in {JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.FAILED}:
+            return {"jobId": job_id, "status": job.status.value, "processados": 0, "restantes": 0}
+
+        events = db.get_events(job_id, with_links=False)
+        links = db.get_links(job_id)
+        pendentes_eventos = [
+            evento for evento in events
+            if evento.type.is_media and evento.processing_status == ProcessingStatus.PENDING
+        ]
+        pendentes_links = [link for link in links if link.status == ProcessingStatus.PENDING]
+
+        if not pendentes_eventos and not pendentes_links:
+            return await self._encerrar(job, budget_hit=False)
+
+        if not settings.ai_enabled:
+            db.update_job(job_id, status=JobStatus.PARTIAL,
+                       error="Nenhum provedor de IA configurado (defina OPENAI_API_KEY).")
+            return {"jobId": job_id, "status": JobStatus.PARTIAL.value, "processados": 0,
+                    "restantes": len(pendentes_eventos) + len(pendentes_links)}
+
+        db.update_job(job_id, status=JobStatus.PROCESSING, error=None)
+        provider = build_provider(settings)
+        fonte = self.fonte(job) if settings.serverless else None
+        context = self.montar_contexto(job, events, provider, fonte)
+        cost = job.cost.model_copy()
+        processados = 0
+        budget_hit = False
+
+        try:
+            for evento in pendentes_eventos:
+                if processados >= limite_itens or time.monotonic() - comeco > limite_tempo:
+                    break
+                if not db.lease_event(job_id, evento.id):
+                    continue  # outra execução pegou este item
+                processador = processor_for(evento.type)
+                if processador is None:
+                    continue
+                try:
+                    resultado = await processador.process(evento, context)
+                except BudgetExceeded as exc:
+                    budget_hit = True
+                    db.update_event(job_id, evento.id, processing_status=ProcessingStatus.PENDING,
+                                 processing_error=f"Processamento pausado: {exc}")
+                    break
+                except Exception as exc:
+                    logger.exception("job=%s event=%s falha no processador", job_id, evento.index)
+                    db.update_event(job_id, evento.id, processing_status=ProcessingStatus.FAILED,
+                                 processing_error=_sanitize(str(exc)))
+                    processados += 1
+                    continue
+                _apply_outcome(job_id, evento, resultado, cost)
+                processados += 1
+                logger.info("job=%s event=%d type=%s status=%s", job_id, evento.index,
+                            evento.type.value, resultado.status.value)
+
+            for link in pendentes_links:
+                if budget_hit or processados >= limite_itens or time.monotonic() - comeco > limite_tempo:
+                    break
+                if not db.lease_link(job_id, link.id):
+                    continue
+                try:
+                    resultado = await link_processor().process(link, context)
+                except Exception as exc:
+                    logger.exception("job=%s link falha", job_id)
+                    db.update_link(job_id, link.id, status=ProcessingStatus.FAILED.value,
+                                error=_sanitize(str(exc)))
+                    processados += 1
+                    continue
+                db.update_link(job_id, link.id, status=resultado.status.value,
+                            title=resultado.metadata.get("title"),
+                            description=resultado.metadata.get("description"),
+                            content=resultado.text, error=resultado.error,
+                            metadata=resultado.metadata)
+                processados += 1
+        finally:
+            await provider.aclose()
+            if fonte is not None:
+                fonte.fechar()
+
+        db.update_job(job_id, cost=cost)
+        atual = db.get_job(job_id) or job
+        restantes = self._restantes(job_id)
+        if restantes == 0 or budget_hit:
+            return await self._encerrar(atual, budget_hit=budget_hit)
+
+        coverage = compute_coverage(db.get_events(job_id, with_links=False), db.get_links(job_id))
+        db.update_job(job_id, coverage=coverage)
+        return {
+            "jobId": job_id,
+            "status": JobStatus.PROCESSING.value,
+            "processados": processados,
+            "restantes": restantes,
+            "cobertura": coverage.percent,
+        }
+
+    def _restantes(self, job_id: str) -> int:
+        eventos = db.get_events(job_id, with_links=False)
+        links = db.get_links(job_id)
+        return sum(
+            1 for evento in eventos
+            if evento.type.is_media and evento.processing_status == ProcessingStatus.PENDING
+        ) + sum(1 for link in links if link.status == ProcessingStatus.PENDING)
+
+    async def _encerrar(self, job: Job, *, budget_hit: bool) -> dict:
+        """Fecha o atendimento: cobertura final e status honesto."""
+        job_id = job.id
+        eventos = db.get_events(job_id, with_links=False)
+        links = db.get_links(job_id)
+        coverage = compute_coverage(eventos, links)
+        avisos = [aviso for aviso in job.warnings if aviso.code != "budget"]
+        if budget_hit:
+            avisos.append(
+                JobWarning(
+                    code="budget",
+                    message=(
+                        f"O teto de custo de US$ {settings.max_job_cost_usd:.2f} foi atingido. "
+                        "O processamento parou e nada foi apagado — aumente o teto e reprocesse "
+                        "as pendências quando quiser."
+                    ),
+                )
+            )
+        status = JobStatus.COMPLETED if coverage.complete else JobStatus.PARTIAL
+        db.update_job(job_id, status=status, coverage=coverage, warnings=avisos)
+        logger.info("job=%s encerrado status=%s cobertura=%.1f%%", job_id, status.value, coverage.percent)
+        return {
+            "jobId": job_id,
+            "status": status.value,
+            "processados": 0,
+            "restantes": 0,
+            "cobertura": coverage.percent,
+        }
 
     # ── fase 2: inteligência ────────────────────────────────────────────────
     async def process_job(
@@ -250,29 +431,21 @@ class JobRunner:
     ) -> None:
         """Processa as mídias pendentes com semáforo por tipo e teto de custo."""
         job_id = job.id
-        events = get_events(job_id, with_links=False)
-        links = get_links(job_id)
+        events = db.get_events(job_id, with_links=False)
+        links = db.get_links(job_id)
 
         if not settings.ai_enabled and _needs_ai(events, links, retry_failed, only_event):
-            update_job(
+            db.update_job(
                 job_id,
                 status=JobStatus.PARTIAL,
                 error="Nenhum provedor de IA configurado (defina OPENAI_API_KEY).",
             )
             return
 
-        update_job(job_id, status=JobStatus.PROCESSING, error=None)
+        db.update_job(job_id, status=JobStatus.PROCESSING, error=None)
         provider = build_provider(settings)
-        budget = Budget(cap_usd=settings.max_job_cost_usd, spent_usd=job.cost.total_usd)
-        context = ProcessingContext(
-            job_id=job_id,
-            extract_root=storage.extract_dir(job_id),
-            work_root=storage.work_dir(job_id),
-            settings=settings,
-            provider=provider,
-            budget=budget,
-            conversation_hint=_conversation_hint(events),
-        )
+        fonte = self.fonte(job) if settings.serverless else None
+        context = self.montar_contexto(job, events, provider, fonte)
 
         semaphores = {
             category: asyncio.Semaphore(max(1, getattr(settings, attribute)))
@@ -300,12 +473,12 @@ class JobRunner:
             async with semaphores.get(processor.category, semaphores["image"]):
                 if self.is_cancelled(job_id) or budget_hit:
                     return
-                update_event(job_id, event.id, processing_status=ProcessingStatus.PROCESSING)
+                db.update_event(job_id, event.id, processing_status=ProcessingStatus.PROCESSING)
                 try:
                     outcome = await processor.process(event, context)
                 except BudgetExceeded as exc:
                     budget_hit = True
-                    update_event(
+                    db.update_event(
                         job_id, event.id,
                         processing_status=ProcessingStatus.PENDING,
                         processing_error=f"Processamento pausado: {exc}",
@@ -313,7 +486,7 @@ class JobRunner:
                     return
                 except Exception as exc:  # falha isolada nunca derruba o job
                     logger.exception("job=%s event=%s falha no processador", job_id, event.index)
-                    update_event(
+                    db.update_event(
                         job_id, event.id,
                         processing_status=ProcessingStatus.FAILED,
                         processing_error=_sanitize(str(exc)),
@@ -329,18 +502,18 @@ class JobRunner:
             if self.is_cancelled(job_id) or budget_hit:
                 return
             async with semaphores["link"]:
-                update_link(job_id, link.id, status=ProcessingStatus.PROCESSING.value)
+                db.update_link(job_id, link.id, status=ProcessingStatus.PROCESSING.value)
                 try:
                     outcome = await link_processor().process(link, context)
                 except Exception as exc:
                     logger.exception("job=%s link falha", job_id)
-                    update_link(
+                    db.update_link(
                         job_id, link.id,
                         status=ProcessingStatus.FAILED.value,
                         error=_sanitize(str(exc)),
                     )
                     return
-                update_link(
+                db.update_link(
                     job_id, link.id,
                     status=outcome.status.value,
                     title=outcome.metadata.get("title"),
@@ -360,17 +533,17 @@ class JobRunner:
 
         await asyncio.to_thread(storage.purge_work, job_id)
 
-        final_events = get_events(job_id, with_links=False)
-        final_links = get_links(job_id)
+        final_events = db.get_events(job_id, with_links=False)
+        final_links = db.get_links(job_id)
         coverage = compute_coverage(final_events, final_links)
-        update_job(job_id, coverage=coverage, cost=cost)
+        db.update_job(job_id, coverage=coverage, cost=cost)
 
         if self.is_cancelled(job_id):
-            update_job(job_id, status=JobStatus.CANCELLED)
+            db.update_job(job_id, status=JobStatus.CANCELLED)
             self._cancelled.discard(job_id)
             return
 
-        warnings = [w for w in (get_job(job_id) or job).warnings if w.code != "budget"]
+        warnings = [w for w in (db.get_job(job_id) or job).warnings if w.code != "budget"]
         if budget_hit:
             warnings.append(
                 JobWarning(
@@ -384,7 +557,7 @@ class JobRunner:
             )
 
         status = JobStatus.COMPLETED if coverage.complete else JobStatus.PARTIAL
-        update_job(job_id, status=status, warnings=warnings)
+        db.update_job(job_id, status=status, warnings=warnings)
         logger.info(
             "job=%s processamento encerrado status=%s cobertura=%.1f%% custo=%.4f",
             job_id, status.value, coverage.percent, cost.total_usd,
@@ -396,7 +569,7 @@ def _apply_outcome(job_id: str, event: Event, outcome: ProcessingOutcome, cost: 
     metadata.update(outcome.metadata or {})
     if outcome.cost_usd:
         add_cost(cost, outcome.category, outcome.cost_usd)
-    update_event(
+    db.update_event(
         job_id,
         event.id,
         processed_text=outcome.text,
@@ -465,12 +638,10 @@ def _sanitize(message: str) -> str:
 
 def purge_expired() -> None:
     """Apaga jobs além da retenção configurada: banco e arquivos."""
-    from app.db import delete_job, expired_jobs
-
-    for job in expired_jobs(settings.job_retention_hours):
+    for job in db.expired_jobs(settings.job_retention_hours):
         logger.info("job=%s removido por retenção", job.id)
         storage.purge_job(job.id)
-        delete_job(job.id)
+        db.delete_job(job.id)
 
 
 runner = JobRunner()

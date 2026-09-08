@@ -8,6 +8,7 @@ código do resto do projeto.
 from __future__ import annotations
 
 import secrets
+import shutil
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,9 +35,22 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    # Armazenamento
+    # Armazenamento local (servidor próprio, Docker, desenvolvimento)
     data_dir: Path = Path("/data")
     database_path: str = ""
+
+    # Armazenamento na nuvem (Vercel + Supabase). Preenchido, passa a valer no
+    # lugar do SQLite e do disco local.
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    supabase_bucket: str = "decifra"
+    supabase_table_prefix: str = "decifra_"
+    supabase_timeout_seconds: int = 60
+
+    # Processamento em blocos curtos, para caber no tempo da função da Vercel.
+    tick_budget_seconds: int = 45
+    tick_max_items: int = 8
+    cron_secret: str = ""
 
     # Acesso
     app_access_password: str = ""
@@ -70,6 +84,9 @@ class Settings(BaseSettings):
     # Mídia
     video_max_frames: int = 16
     audio_chunk_max_mb: int = 20
+    # Teto do arquivo aceito pela API de transcrição (25 MB); sem FFmpeg não dá
+    # para dividir, então acima disso o áudio fica marcado como não processado.
+    audio_max_upload_mb: int = 24
     audio_chunk_seconds: int = 600
     pdf_max_pages: int = 300
     pdf_min_chars_per_page: int = 180
@@ -99,6 +116,16 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def storage_mode(self) -> str:
+        """"supabase" quando as credenciais existem; "local" caso contrário."""
+        return "supabase" if (self.supabase_url and self.supabase_service_key) else "local"
+
+    @property
+    def serverless(self) -> bool:
+        """Roda em função de curta duração (Vercel), sem disco que dure."""
+        return self.storage_mode == "supabase"
 
     @property
     def db_path(self) -> Path:
@@ -136,7 +163,20 @@ class Settings(BaseSettings):
             "maxJobCostUsd": self.max_job_cost_usd,
             "jobRetentionHours": self.job_retention_hours,
             "autoConfirmProcessing": self.auto_confirm_processing,
+            "storageMode": self.storage_mode,
+            "ffmpegAvailable": ffmpeg_disponivel(),
+            "videoSupported": ffmpeg_disponivel(),
         }
+
+
+@lru_cache
+def ffmpeg_disponivel() -> bool:
+    """Existe FFmpeg nesta máquina?
+
+    Em servidor próprio existe e tudo funciona. Na Vercel não existe: nesse caso
+    o áudio vai direto para a transcrição, sem conversão, e vídeo não é analisado.
+    """
+    return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
 _RUNTIME_SECRET = secrets.token_urlsafe(32)
@@ -145,8 +185,13 @@ _RUNTIME_SECRET = secrets.token_urlsafe(32)
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    settings.jobs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        settings.jobs_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Ambiente sem disco gravável (função da Vercel): só /tmp aceita escrita.
+        settings.data_dir = Path("/tmp/decifra")
+        settings.jobs_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 

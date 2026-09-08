@@ -11,9 +11,31 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.config import settings
+from app.config import ffmpeg_disponivel, settings
 
 logger = logging.getLogger(__name__)
+
+
+def disponivel() -> bool:
+    """Existe FFmpeg nesta instalação? Na Vercel, não."""
+    return ffmpeg_disponivel()
+
+
+# Estimativa grosseira de duração quando não há ffprobe: os áudios do WhatsApp
+# são Opus de baixa taxa, algo perto de 2,5 KB por segundo de fala.
+BYTES_POR_SEGUNDO_OPUS = 2_500
+
+
+def estimar_duracao(tamanho_bytes: int, mime: str | None = None) -> float:
+    """Duração aproximada pelo tamanho do arquivo, para estimar custo sem ffprobe."""
+    if tamanho_bytes <= 0:
+        return 0.0
+    taxa = BYTES_POR_SEGUNDO_OPUS
+    if mime and ("mpeg" in mime or "mp3" in mime):
+        taxa = 16_000  # MP3 costuma vir bem mais gordo
+    elif mime and "wav" in mime:
+        taxa = 32_000
+    return round(tamanho_bytes / taxa, 1)
 
 
 class MediaToolError(RuntimeError):
@@ -32,6 +54,8 @@ class MediaInfo:
 
 
 async def _run(command: list[str], timeout: int = 900) -> tuple[int, bytes, bytes]:
+    if not disponivel():
+        raise MediaToolError("FFmpeg não está instalado nesta instalação")
     process = await asyncio.create_subprocess_exec(
         *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -45,6 +69,8 @@ async def _run(command: list[str], timeout: int = 900) -> tuple[int, bytes, byte
 
 async def probe(path: Path) -> MediaInfo:
     """Duração e codecs do arquivo. Devolve MediaInfo vazio se o ffprobe falhar."""
+    if not disponivel():
+        return MediaInfo()
     code, stdout, stderr = await _run(
         [
             settings.ffprobe_bin, "-v", "error", "-print_format", "json",

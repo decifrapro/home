@@ -12,7 +12,12 @@ from app.models.schemas import ProcessingStatus
 from app.parsers.whatsapp import parse_chat
 from app.services.mime import detect_mime, type_for_mime
 from app.services.timeline import build_timeline
-from app.services.zip_service import ZipRejected, choose_main_txt, extract_zip
+from app.services.zip_service import ZipRejected, choose_main_txt, extract_zip, read_text_file
+
+
+def leitor(raiz):
+    """Lê um arquivo já extraído — é o que `choose_main_txt` espera receber."""
+    return lambda caminho: read_text_file(raiz / caminho)
 
 
 def _extract(zip_path, tmp_path, **overrides):
@@ -43,7 +48,7 @@ def test_mime_divergente_da_extensao_prevalece_o_conteudo(make_zip, tmp_path, sa
         chat, {"contrato-com-extensao-errada.jpg": sample_media["contrato-com-extensao-errada.jpg"]}
     )
     extraction = _extract(zip_path, tmp_path)
-    main_txt, _log = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, _log = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     timeline = build_timeline(
         parse_chat(chat), extraction.files, tmp_path / "extraido", main_txt.relative_path
     )
@@ -59,7 +64,7 @@ def test_arquivo_orfao_aparece_no_relatorio(make_zip, tmp_path, sample_media):
         chat, {"imagem.jpg": sample_media["imagem.jpg"], "orfao.jpg": sample_media["orfao.jpg"]}
     )
     extraction = _extract(zip_path, tmp_path)
-    main_txt, _ = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, _ = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     timeline = build_timeline(
         parse_chat(chat), extraction.files, tmp_path / "extraido", main_txt.relative_path
     )
@@ -72,7 +77,7 @@ def test_anexo_citado_e_ausente_fica_visivel_como_nao_associado(make_zip, tmp_pa
     chat = "25/08/2026 12:01 - Rui: nao-existe.pdf (arquivo anexado)\n"
     zip_path = make_zip(chat)
     extraction = _extract(zip_path, tmp_path)
-    main_txt, _ = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, _ = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     timeline = build_timeline(
         parse_chat(chat), extraction.files, tmp_path / "extraido", main_txt.relative_path
     )
@@ -87,7 +92,7 @@ def test_associacao_ignora_diferenca_de_caixa_como_ultimo_recurso(make_zip, tmp_
     chat = "25/08/2026 11:03 - Rui: IMAGEM.JPG (arquivo anexado)\n"
     zip_path = make_zip(chat, {"imagem.jpg": sample_media["imagem.jpg"]})
     extraction = _extract(zip_path, tmp_path)
-    main_txt, _ = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, _ = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     timeline = build_timeline(
         parse_chat(chat), extraction.files, tmp_path / "extraido", main_txt.relative_path
     )
@@ -139,7 +144,7 @@ def test_escolha_do_txt_principal_entre_varios(make_zip, tmp_path):
     chat = "\n".join(f"25/08/2026 10:{minuto:02d} - Rui: mensagem {minuto}" for minuto in range(30))
     zip_path = make_zip(chat, {"leia-me.txt": b"apenas um aviso sem timestamps"})
     extraction = _extract(zip_path, tmp_path)
-    main_txt, log = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, log = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     assert main_txt.name == "_chat.txt"
     assert log[0]["timestamp_lines"] == 30
 
@@ -149,7 +154,7 @@ def test_zip_sem_txt_nao_tem_candidato(tmp_path, sample_media):
     with zipfile.ZipFile(zip_path, "w") as archive:
         archive.write(sample_media["imagem.jpg"], "imagem.jpg")
     extraction = _extract(zip_path, tmp_path)
-    main_txt, _ = choose_main_txt(extraction.txt_candidates, tmp_path / "extraido")
+    main_txt, _ = choose_main_txt(extraction.txt_candidates, leitor(tmp_path / "extraido"))
     assert main_txt is None
 
 

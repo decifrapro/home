@@ -1,0 +1,15 @@
+# Fora do pacote enviado para a Vercel
+backend/tests
+backend/.venv
+backend/requirements.lock.txt
+tests-fixtures
+data
+docs
+supabase
+Dockerfile
+docker-compose.yml
+.dockerignore
+ARCHITECTURE.md
+MARCA.md
+**/__pycache__
+**/*.pyc
