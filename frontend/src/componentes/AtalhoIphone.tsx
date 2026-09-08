@@ -169,14 +169,48 @@ export function AtalhoIphone() {
             </li>
           </ol>
 
+          <h3>Antes de usar, teste uma vez</h3>
+          <ol>
+            <li>
+              No app Atalhos, toque no <strong>▶</strong> do atalho e escolha um ZIP qualquer que
+              esteja em Arquivos.
+            </li>
+            <li>
+              Se aparecer a notificação com o resumo, está funcionando. Se der erro, a mensagem do
+              iPhone diz o que foi — normalmente é a chave colada errada.
+            </li>
+            <li>
+              Aqui embaixo, neste cartão, aparece a última vez que o atalho falou com o servidor.
+              Se continuar em “nunca”, o pedido não chegou.
+            </li>
+          </ol>
+
           <h3>Como usar depois de pronto</h3>
           <ol>
-            <li>No WhatsApp, abra a conversa e exporte com “Incluir mídia”.</li>
             <li>
-              Na tela de compartilhar que aparecer, toque em <strong>Decifra Pro</strong>.
+              No WhatsApp, abra a conversa, toque no <strong>nome do contato</strong> no topo, role
+              até <strong>Exportar conversa</strong> e escolha <strong>Incluir mídia</strong>.
+            </li>
+            <li>
+              Vai abrir a tela de compartilhar do iPhone. <strong>O atalho não aparece na fileira
+              de ícones de aplicativos de cima</strong> — a Apple só coloca ali aplicativo baixado
+              da App Store. Role a <strong>lista de baixo</strong> (onde estão “Copiar”, “Salvar em
+              Arquivos”) e o <strong>Decifra Pro</strong> está lá.
+            </li>
+            <li>
+              Para ele ficar sempre à mão, toque em <strong>Editar ações</strong> no fim da lista e
+              fixe o Decifra Pro no topo.
             </li>
             <li>Pronto. O aviso do iPhone conta o que foi recebido, e o resto acontece sozinho.</li>
           </ol>
+
+          <p className={dados.ultimoEnvio ? 'fraco' : 'aviso'}>
+            {dados.ultimoEnvio
+              ? `Última vez que o atalho falou com o servidor: ${new Date(
+                  dados.ultimoEnvio,
+                ).toLocaleString('pt-BR')}.`
+              : 'O atalho ainda nunca falou com este servidor. Depois de montá-lo, faça o teste acima: se este aviso continuar aqui, o pedido não está chegando.'}
+          </p>
 
           <p className="fraco">
             Pelo atalho o processamento começa automaticamente, sem passar pela tela de

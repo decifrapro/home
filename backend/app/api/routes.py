@@ -429,7 +429,20 @@ def atalho_chave(request: Request) -> dict:
         "urlPreparar": f"{base}/api/atalho/preparar",
         "urlConcluir": f"{base}/api/atalho/concluir",
         "appUrl": base,
+        "ultimoEnvio": _ultimo_envio_pelo_atalho(),
     }
+
+
+def _ultimo_envio_pelo_atalho() -> str | None:
+    """Quando o atalho falou com o servidor pela última vez.
+
+    Serve para responder, sem adivinhação, a pergunta que aparece quando o
+    atalho parece não funcionar: "ele chegou até aqui?".
+    """
+    for job in db.list_jobs(30):
+        if (job.metadata or {}).get("origem") == "atalho-ios":
+            return job.created_at.isoformat() if job.created_at else None
+    return None
 
 
 @router.post("/atalho/preparar")

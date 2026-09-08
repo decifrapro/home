@@ -169,4 +169,5 @@ export interface DadosDoAtalho {
   urlPreparar?: string
   urlConcluir?: string
   appUrl?: string
+  ultimoEnvio?: string | null
 }

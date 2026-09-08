@@ -87,6 +87,21 @@ WhatsApp (iPhone)* → **Ver o passo a passo**. Ali estão a sua chave pessoal e
 sequência exata de ações, com os endereços já preenchidos. Leva uns cinco
 minutos, uma vez só.
 
+**Duas coisas que fazem o atalho parecer quebrado, e não estão quebradas:**
+
+1. **O atalho não aparece entre os ícones de aplicativo** no topo da tela de
+   compartilhar. A Apple só coloca ali aplicativo baixado da App Store. Ele fica
+   na **lista de baixo**, junto de “Copiar” e “Salvar em Arquivos”, e pode ser
+   fixado no topo por *Editar ações*.
+2. **Mandar o arquivo direto para a função dá erro silencioso.** A Vercel recusa
+   requisição acima de ~4,5 MB, e uma conversa com mídia passa longe disso. Por
+   isso o atalho daqui pede um endereço antes e manda o arquivo **direto para o
+   armazenamento** — o ZIP nunca passa pela função.
+
+O cartão mostra **a última vez que o atalho falou com o servidor**. Se continuar
+em “nunca” depois de você rodar o atalho, o problema é do lado do iPhone (chave
+colada errada, ou a ação de envio mal configurada) e não do servidor.
+
 **Sobre a chave:** ela vale como senha — quem a tiver pode mandar conversas para
 o seu aplicativo. Ela é derivada do `APP_SESSION_SECRET` do servidor, não fica
 guardada em lugar nenhum, e trocar esse segredo invalida a chave antiga (é assim
@@ -355,6 +370,21 @@ olhando para confirmar. Quem segura o gasto continua sendo o `MAX_JOB_COST_USD`.
 WhatsApp (iPhone)* → **Ver o passo a passo**. Ali estão a sua chave pessoal e a
 sequência exata de ações, com os endereços já preenchidos. Leva uns cinco
 minutos, uma vez só.
+
+**Duas coisas que fazem o atalho parecer quebrado, e não estão quebradas:**
+
+1. **O atalho não aparece entre os ícones de aplicativo** no topo da tela de
+   compartilhar. A Apple só coloca ali aplicativo baixado da App Store. Ele fica
+   na **lista de baixo**, junto de “Copiar” e “Salvar em Arquivos”, e pode ser
+   fixado no topo por *Editar ações*.
+2. **Mandar o arquivo direto para a função dá erro silencioso.** A Vercel recusa
+   requisição acima de ~4,5 MB, e uma conversa com mídia passa longe disso. Por
+   isso o atalho daqui pede um endereço antes e manda o arquivo **direto para o
+   armazenamento** — o ZIP nunca passa pela função.
+
+O cartão mostra **a última vez que o atalho falou com o servidor**. Se continuar
+em “nunca” depois de você rodar o atalho, o problema é do lado do iPhone (chave
+colada errada, ou a ação de envio mal configurada) e não do servidor.
 
 **Sobre a chave:** ela vale como senha — quem a tiver pode mandar conversas para
 o seu aplicativo. Ela é derivada do `APP_SESSION_SECRET` do servidor, não fica

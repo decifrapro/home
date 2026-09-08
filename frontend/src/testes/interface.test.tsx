@@ -184,3 +184,59 @@ describe('atalho do iPhone', () => {
     expect(screen.queryByRole('button', { name: 'Ver o passo a passo' })).not.toBeInTheDocument()
   })
 })
+
+describe('atalho: saber se ele chegou ao servidor', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  function responder(corpo: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(corpo), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })),
+    )
+  }
+
+  const base = {
+    disponivel: true,
+    chave: 'b'.repeat(40),
+    cabecalho: 'x-decifra-chave',
+    urlPreparar: 'https://app.exemplo/api/atalho/preparar',
+    urlConcluir: 'https://app.exemplo/api/atalho/concluir',
+  }
+
+  it('avisa quando o atalho nunca chegou ao servidor', async () => {
+    const { AtalhoIphone } = await import('../componentes/AtalhoIphone')
+    responder({ ...base, ultimoEnvio: null })
+
+    render(<AtalhoIphone />)
+    await waitFor(() => expect(screen.getByText('Enviar direto do WhatsApp (iPhone)')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Ver o passo a passo' }))
+
+    expect(screen.getByText(/ainda nunca falou com este servidor/)).toBeInTheDocument()
+  })
+
+  it('mostra a data do último envio quando já funcionou', async () => {
+    const { AtalhoIphone } = await import('../componentes/AtalhoIphone')
+    responder({ ...base, ultimoEnvio: '2026-08-25T10:52:00' })
+
+    render(<AtalhoIphone />)
+    await waitFor(() => expect(screen.getByText('Enviar direto do WhatsApp (iPhone)')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Ver o passo a passo' }))
+
+    expect(screen.getByText(/Última vez que o atalho falou/)).toBeInTheDocument()
+  })
+
+  it('explica que o atalho não aparece na fileira de ícones do compartilhar', async () => {
+    const { AtalhoIphone } = await import('../componentes/AtalhoIphone')
+    responder({ ...base, ultimoEnvio: null })
+
+    render(<AtalhoIphone />)
+    await waitFor(() => expect(screen.getByText('Enviar direto do WhatsApp (iPhone)')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Ver o passo a passo' }))
+
+    expect(screen.getByText(/não aparece na fileira/)).toBeInTheDocument()
+    expect(screen.getByText(/Editar ações/)).toBeInTheDocument()
+  })
+})
