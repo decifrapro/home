@@ -106,7 +106,7 @@ class Settings(BaseSettings):
 
     # Custo
     max_job_cost_usd: float = 5.0
-    auto_confirm_processing: bool = False
+    auto_confirm_processing: bool = True
     price_transcription_per_minute: float = 0.006
     price_vision_input_per_mtok: float = 0.40
     price_vision_output_per_mtok: float = 1.60
@@ -146,6 +146,18 @@ class Settings(BaseSettings):
     def storage_mode(self) -> str:
         """"supabase" quando as credenciais existem; "local" caso contrário."""
         return "supabase" if (self.supabase_url and self.supabase_service_key) else "local"
+
+    @property
+    def tempo_limite_de_chamada(self) -> int:
+        """Quanto uma chamada de IA pode demorar, sem ultrapassar a vida da função.
+
+        Em servidor próprio vale o valor configurado. Na Vercel a função morre
+        em 60 segundos, então esperar 180 por uma resposta só garantiria que o
+        trabalho fosse cortado no meio, sem registrar nada.
+        """
+        if not self.serverless:
+            return self.openai_timeout_seconds
+        return max(10, min(self.openai_timeout_seconds, self.tick_budget_seconds))
 
     @property
     def serverless(self) -> bool:

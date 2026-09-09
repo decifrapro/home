@@ -42,10 +42,12 @@ export function useJob(jobId: string | null, intervaloMs = 2000, empurrar = fals
       // Quando o servidor não tem processo de fundo (Vercel), é o aplicativo que
       // pede o próximo pedaço de trabalho a cada volta.
       if (atual && empurrar && atual.status === 'processing') {
+        // Um bloco que falha nunca some em silêncio: o motivo vai para a tela.
         try {
-          await api.tick(atual.id)
-        } catch {
-          /* o agendamento automático continua de qualquer forma */
+          const passo = await api.tick(atual.id)
+          setErro(passo.erro ? `Falha ao decifrar: ${passo.erro}` : null)
+        } catch (falha) {
+          setErro(`Falha ao decifrar: ${(falha as Error).message}`)
         }
         if (!ativo) return
         atual = await atualizar()
@@ -66,9 +68,13 @@ export function useJob(jobId: string | null, intervaloMs = 2000, empurrar = fals
   return { job, erro, carregando, atualizar }
 }
 
-export function useEventos(jobId: string | null, filtros: { type: string; search: string }) {
+export function useEventos(
+  jobId: string | null,
+  filtros: { type: string; search: string; avisos?: boolean },
+) {
   const [eventos, setEventos] = useState<Evento[]>([])
   const [total, setTotal] = useState(0)
+  const [avisosOcultos, setAvisosOcultos] = useState(0)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -79,17 +85,18 @@ export function useEventos(jobId: string | null, filtros: { type: string; search
       const resposta = await api.eventos(jobId, filtros)
       setEventos(resposta.events)
       setTotal(resposta.total)
+      setAvisosOcultos(resposta.avisosOcultos ?? 0)
       setErro(null)
     } catch (falha) {
       setErro((falha as Error).message)
     } finally {
       setCarregando(false)
     }
-  }, [jobId, filtros.type, filtros.search])
+  }, [jobId, filtros.type, filtros.search, filtros.avisos])
 
   useEffect(() => {
     buscar()
   }, [buscar])
 
-  return { eventos, total, carregando, erro, recarregar: buscar }
+  return { eventos, total, avisosOcultos, carregando, erro, recarregar: buscar }
 }

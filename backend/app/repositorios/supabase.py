@@ -318,6 +318,34 @@ def lease_event(job_id: str, event_id: str, seconds: int = 300) -> bool:
     return bool(atualizados)
 
 
+def reclaim_expired(job_id: str) -> int:
+    """Devolve para a fila os itens cuja reserva venceu.
+
+    Sem isto um item reservado por uma execução que morreu no meio ficaria
+    marcado como "processando" para sempre e ninguém voltaria nele.
+    """
+    agora = _agora()
+    devolvidos = cliente().update_returning(
+        _tabela("events"),
+        {
+            "job_id": f"eq.{job_id}",
+            "processing_status": f"eq.{ProcessingStatus.PROCESSING.value}",
+            "leased_until": f"lt.{agora}",
+        },
+        {"processing_status": ProcessingStatus.PENDING.value, "leased_until": None},
+    )
+    devolvidos += cliente().update_returning(
+        _tabela("links"),
+        {
+            "job_id": f"eq.{job_id}",
+            "status": f"eq.{ProcessingStatus.PROCESSING.value}",
+            "leased_until": f"lt.{agora}",
+        },
+        {"status": ProcessingStatus.PENDING.value, "leased_until": None},
+    )
+    return len(devolvidos) if isinstance(devolvidos, list) else int(devolvidos)
+
+
 def lease_link(job_id: str, link_id: str, seconds: int = 300) -> bool:
     limite = (datetime.now(UTC) + timedelta(seconds=seconds)).isoformat()
     agora = _agora()

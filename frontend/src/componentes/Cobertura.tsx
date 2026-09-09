@@ -43,6 +43,11 @@ export function Cobertura({ job }: { job: Job }) {
                   <span className="selo selo--decifrado">completo</span>
                 ) : dados.failed ? (
                   <span className="selo selo--falha">{dados.failed} com falha</span>
+                ) : dados.unsupported && dados.done + dados.unsupported === dados.total ? (
+                  // Nada está na fila: estes itens esta instalação não consegue ler.
+                  <span className="selo selo--pendente">
+                    {dados.unsupported} sem suporte aqui
+                  </span>
                 ) : (
                   <span className="selo selo--pendente">
                     {dados.total - dados.done} pendente{dados.total - dados.done > 1 ? 's' : ''}

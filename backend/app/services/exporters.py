@@ -54,6 +54,18 @@ STATUS_NOTE = {
 }
 
 
+def separar_avisos(events: list[Event]) -> tuple[list[Event], int]:
+    """Separa o diálogo dos avisos automáticos do WhatsApp.
+
+    Coisas como "Sua empresa usa um serviço seguro da Meta" ou "Fulano está na
+    sua lista de contatos" foram escritas pelo aplicativo, não por uma pessoa.
+    Elas continuam guardadas e podem ser exibidas a qualquer momento — só não
+    entram no histórico por padrão, porque não fazem parte da conversa.
+    """
+    dialogo = [evento for evento in events if evento.type is not EventType.SYSTEM]
+    return dialogo, len(events) - len(dialogo)
+
+
 def _stamp(event: Event) -> str:
     return event.raw_timestamp or (event.timestamp.strftime("%d/%m/%Y %H:%M") if event.timestamp else "")
 
@@ -122,16 +134,23 @@ def _link_block(link: LinkItem) -> list[str]:
     return lines
 
 
-def export_txt(job: Job, events: list[Event]) -> str:
+def export_txt(job: Job, events: list[Event], incluir_avisos: bool = False) -> str:
     """Formato estável e legível, pensado para leitura humana e auditoria."""
+    omitidos = 0
+    if not incluir_avisos:
+        events, omitidos = separar_avisos(events)
     out: list[str] = [
         SEPARATOR,
         f"HISTÓRICO DA CONVERSA — {job.original_filename or 'exportação do WhatsApp'}",
         f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}",
         f"Eventos: {len(events)}   Cobertura: {job.coverage.percent}%",
-        SEPARATOR,
-        "",
     ]
+    if omitidos:
+        out.append(
+            f"Avisos automáticos do WhatsApp fora do histórico: {omitidos} "
+            "(nada foi apagado; eles continuam no atendimento)"
+        )
+    out += [SEPARATOR, ""]
 
     for event in events:
         header = f"{_stamp(event)} — {_who(event)}"
@@ -160,14 +179,24 @@ def export_txt(job: Job, events: list[Event]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def export_markdown(job: Job, events: list[Event]) -> str:
+def export_markdown(job: Job, events: list[Event], incluir_avisos: bool = False) -> str:
     """Histórico estruturado, fácil de colar em outra IA."""
+    omitidos = 0
+    if not incluir_avisos:
+        events, omitidos = separar_avisos(events)
     out: list[str] = [
         f"# Histórico — {job.original_filename or 'conversa do WhatsApp'}",
         "",
         f"- Eventos: {len(events)}",
         f"- Período: {_range(job)}",
         f"- Cobertura do processamento: {job.coverage.percent}%",
+    ]
+    if omitidos:
+        out.append(
+            f"- Avisos automáticos do WhatsApp fora do histórico: {omitidos} "
+            "(nada foi apagado)"
+        )
+    out += [
         "",
         "> Conteúdo original do WhatsApp e conteúdo extraído por IA aparecem separados.",
         "",

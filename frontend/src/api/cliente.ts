@@ -54,21 +54,25 @@ export const api = {
 
   listarJobs: () => pedir<{ jobs: Job[] }>('/api/jobs'),
 
-  eventos: (id: string, filtros: { type?: string; search?: string } = {}) => {
+  eventos: (id: string, filtros: { type?: string; search?: string; avisos?: boolean } = {}) => {
     const busca = new URLSearchParams()
     if (filtros.type && filtros.type !== 'all') busca.set('type', filtros.type)
     if (filtros.search) busca.set('search', filtros.search)
+    if (filtros.avisos) busca.set('avisos', 'true')
     const sufixo = busca.toString() ? `?${busca}` : ''
-    return pedir<{ total: number; events: Evento[] }>(`/api/jobs/${id}/events${sufixo}`)
+    return pedir<{ total: number; avisosOcultos: number; events: Evento[] }>(
+      `/api/jobs/${id}/events${sufixo}`,
+    )
   },
 
   confirmar: (id: string) => pedir<{ status: string }>(`/api/jobs/${id}/confirm`, { method: 'POST' }),
 
   /** Empurra um pedaço do processamento (modo Vercel, sem processo de fundo). */
   tick: (id: string) =>
-    pedir<{ status: string; processados: number; restantes: number }>(`/api/jobs/${id}/tick`, {
-      method: 'POST',
-    }),
+    pedir<{ status: string; processados: number; restantes: number; erro?: string }>(
+      `/api/jobs/${id}/tick`,
+      { method: 'POST' },
+    ),
 
   cancelar: (id: string) => pedir<Job>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
 

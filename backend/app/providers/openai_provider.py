@@ -50,7 +50,7 @@ class OpenAIProvider:
             self._client = httpx.AsyncClient(
                 base_url=self._settings.openai_base_url.rstrip("/"),
                 headers={"Authorization": f"Bearer {self._settings.openai_api_key}"},
-                timeout=httpx.Timeout(self._settings.openai_timeout_seconds),
+                timeout=httpx.Timeout(self._settings.tempo_limite_de_chamada),
             )
         return self._client
 

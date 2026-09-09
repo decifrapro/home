@@ -83,14 +83,22 @@ async def test_job_completo_monta_timeline_fiel(client, zip_completo):
     assert job["inventory"]["attachmentsUnresolved"] == 1
     assert job["inventory"]["orphanFiles"] == 1
 
-    eventos = client.get(f"/api/jobs/{job_id}/events").json()["events"]
+    resposta = client.get(f"/api/jobs/{job_id}/events").json()
+    eventos = resposta["events"]
     assert [evento["index"] for evento in eventos] == sorted(e["index"] for e in eventos)
-    assert eventos[0]["type"] == "system"
-    assert eventos[2]["type"] == "audio"
-    assert eventos[2]["processingStatus"] == "pending"
-    assert eventos[3]["caption"] == "Olha essa condição"
+    # Avisos automáticos do WhatsApp não entram na leitura da conversa por padrão…
+    assert all(evento["type"] != "system" for evento in eventos)
+    assert resposta["avisosOcultos"] >= 1
+    audio = next(e for e in eventos if e["type"] == "audio")
+    assert audio["processingStatus"] == "pending"
+    assert any(e["caption"] == "Olha essa condição" for e in eventos)
     ausente = next(e for e in eventos if e["attachmentName"] == "nao-existe.pdf")
     assert ausente["processingStatus"] == "unresolved"
+
+    # …mas nada foi apagado: com o interruptor ligado eles voltam, na posição original.
+    completos = client.get(f"/api/jobs/{job_id}/events?avisos=true").json()["events"]
+    assert completos[0]["type"] == "system"
+    assert len(completos) > len(eventos)
 
 
 async def test_evento_nao_resolvido_permanece_na_posicao(client, zip_completo):
@@ -243,6 +251,30 @@ async def test_export_txt_preserva_texto_original_sem_alterar(client, make_zip):
     job_id = _upload(client, make_zip(chat))
     await _parse_now(job_id)
     assert original in client.get(f"/api/jobs/{job_id}/export/txt").text
+
+
+async def test_export_deixa_os_avisos_do_whatsapp_fora_do_historico(client, make_zip):
+    """Aviso do aplicativo não é diálogo — sai do histórico, mas não é apagado."""
+    chat = (
+        "25/08/2026 10:40 - As mensagens são criptografadas de ponta a ponta.\n"
+        "25/08/2026 10:41 - Rui está na sua lista de contatos\n"
+        "25/08/2026 10:45 - Rui: bom dia\n"
+    )
+    job_id = _upload(client, make_zip(chat))
+    await _parse_now(job_id)
+
+    padrao = client.get(f"/api/jobs/{job_id}/export/txt").text
+    assert "bom dia" in padrao
+    assert "lista de contatos" not in padrao
+    assert "criptografadas" not in padrao
+    assert "Avisos automáticos do WhatsApp fora do histórico: 2" in padrao
+
+    completo = client.get(f"/api/jobs/{job_id}/export/txt?avisos=true").text
+    assert "lista de contatos" in completo
+    assert "criptografadas" in completo
+
+    # O JSON é o formato de auditoria: continua trazendo tudo.
+    assert "lista de contatos" in client.get(f"/api/jobs/{job_id}/export/json").text
 
 
 async def test_exclusao_do_job_apaga_arquivos(client, zip_completo):

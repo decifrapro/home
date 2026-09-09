@@ -23,7 +23,12 @@ from app.jobs.worker import PARSE, PROCESS, RETRY_ALL, RETRY_ONE, Task, purge_ex
 from app.models.schemas import EventType, JobStatus, ProcessingStatus
 from app.services import storage
 from app.services.atalho import CABECALHO, chave_confere, chave_disponivel, gerar_chave
-from app.services.exporters import export_json_text, export_markdown, export_txt
+from app.services.exporters import (
+    export_json_text,
+    export_markdown,
+    export_txt,
+    separar_avisos,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -274,9 +279,14 @@ def get_events(
     status: str | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=5000),
+    avisos: bool = Query(default=False),
 ) -> dict:
     _job_or_404(job_id)
     events = db.get_events(job_id)
+
+    # Avisos automáticos do WhatsApp não são diálogo. Ficam guardados e podem ser
+    # exibidos a qualquer momento, mas fora do caminho de quem quer ler a conversa.
+    events, avisos_ocultos = (events, 0) if avisos or type == "system" else separar_avisos(events)
 
     if type and type != "all":
         try:
@@ -300,6 +310,7 @@ def get_events(
         "total": total,
         "offset": offset,
         "limit": limit,
+        "avisosOcultos": avisos_ocultos,
         "events": [event_to_dict(event) for event in page],
     }
 
@@ -551,16 +562,16 @@ def _resumo_para_o_atalho(job) -> str:
 
 # ── Exportações ─────────────────────────────────────────────────────────────
 @router.get("/jobs/{job_id}/export/txt", dependencies=[Depends(require_access)])
-def export_as_txt(job_id: str) -> PlainTextResponse:
+def export_as_txt(job_id: str, avisos: bool = Query(default=False)) -> PlainTextResponse:
     job = _job_or_404(job_id)
-    content = export_txt(job, db.get_events(job_id))
+    content = export_txt(job, db.get_events(job_id), incluir_avisos=avisos)
     return PlainTextResponse(content, headers=_download_headers(job_id, "txt"))
 
 
 @router.get("/jobs/{job_id}/export/md", dependencies=[Depends(require_access)])
-def export_as_markdown(job_id: str) -> PlainTextResponse:
+def export_as_markdown(job_id: str, avisos: bool = Query(default=False)) -> PlainTextResponse:
     job = _job_or_404(job_id)
-    content = export_markdown(job, db.get_events(job_id))
+    content = export_markdown(job, db.get_events(job_id), incluir_avisos=avisos)
     return PlainTextResponse(
         content, media_type="text/markdown; charset=utf-8", headers=_download_headers(job_id, "md")
     )

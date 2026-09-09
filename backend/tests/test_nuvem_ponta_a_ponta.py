@@ -144,6 +144,50 @@ async def test_fluxo_completo_no_modo_vercel(nuvem, client):
     assert dados["schemaVersion"] == 2
 
 
+async def test_decifra_sozinho_sem_pedir_confirmacao(nuvem, client, monkeypatch):
+    """Decifrar é o serviço: ninguém precisa clicar num botão para recebê-lo."""
+    monkeypatch.setattr("app.config.settings.auto_confirm_processing", True)
+    cliente, _provedor, make_zip = nuvem
+    job_id = _subir(cliente, client, make_zip(CHAT, ARQUIVOS))
+
+    job = client.post(f"/api/jobs/{job_id}/upload/registrado").json()
+    assert job["status"] == JobStatus.PROCESSING.value  # já saiu decifrando
+
+    for _ in range(10):
+        resultado = client.post(f"/api/jobs/{job_id}/tick").json()
+        if resultado["restantes"] == 0:
+            break
+    assert resultado["restantes"] == 0
+    audio = next(e for e in client.get(f"/api/jobs/{job_id}/events").json()["events"]
+                 if e["type"] == "audio")
+    assert audio["processingStatus"] == "done"
+
+
+async def test_item_preso_por_execucao_interrompida_volta_para_a_fila(nuvem, client):
+    """A função da Vercel morre aos 60 s; o item reservado não pode ficar preso."""
+    from datetime import UTC, datetime, timedelta
+
+    cliente, _provedor, make_zip = nuvem
+    job_id = _subir(cliente, client, make_zip(CHAT, ARQUIVOS))
+    client.post(f"/api/jobs/{job_id}/upload/registrado")
+    client.post(f"/api/jobs/{job_id}/confirm")
+
+    audio = next(e for e in db.get_events(job_id) if e.type.value == "audio")
+    vencido = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    cliente.update_returning(
+        "decifra_events",
+        {"job_id": f"eq.{job_id}", "id": f"eq.{audio.id}"},
+        {"processing_status": "processing", "leased_until": vencido},
+    )
+
+    for _ in range(10):
+        if client.post(f"/api/jobs/{job_id}/tick").json()["restantes"] == 0:
+            break
+
+    audio = next(e for e in db.get_events(job_id) if e.type.value == "audio")
+    assert audio.processing_status == ProcessingStatus.DONE
+
+
 async def test_agendamento_continua_o_trabalho_com_o_app_fechado(nuvem, client):
     cliente, _provedor, make_zip = nuvem
     zip_path = make_zip(CHAT, ARQUIVOS)

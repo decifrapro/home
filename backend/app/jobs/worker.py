@@ -254,7 +254,14 @@ class JobRunner:
         db.update_job(job_id, estimate=estimate)
 
         if settings.auto_confirm_processing:
-            db.update_job(job_id, confirmed=True)
+            # Decifrar é o serviço; não faz sentido pedir permissão para prestá-lo.
+            # O teto de custo por atendimento continua sendo o freio.
+            db.update_job(job_id, confirmed=True, status=JobStatus.PROCESSING)
+            if settings.serverless:
+                # Numa função de curta duração o trabalho avança em blocos: quem
+                # continua daqui são as chamadas de tick (tela aberta) e o
+                # agendamento automático. Fazer tudo aqui estouraria o tempo.
+                return
             refreshed = db.get_job(job_id)
             if refreshed:
                 await self.process_job(refreshed)
@@ -280,6 +287,35 @@ class JobRunner:
     async def tick(
         self, job: Job, *, budget_seconds: int | None = None, max_items: int | None = None
     ) -> dict:
+        """Roda um bloco de trabalho e nunca engole a falha.
+
+        Se algo quebrar aqui, o erro fica registrado no atendimento e aparece na
+        tela. Sem isso a pessoa ficaria olhando "processando" para sempre sem
+        saber o motivo — que é justamente o que este sistema não pode fazer.
+        """
+        try:
+            resultado = await self._tick(job, budget_seconds=budget_seconds, max_items=max_items)
+        except Exception as exc:  # noqa: BLE001 — a falha precisa chegar na tela
+            logger.exception("job=%s falha no bloco de processamento", job.id)
+            motivo = _sanitize(str(exc)) or exc.__class__.__name__
+            db.update_job(
+                job.id,
+                status=JobStatus.PARTIAL,
+                error=f"O processamento parou: {motivo}",
+            )
+            return {
+                "jobId": job.id,
+                "status": JobStatus.PARTIAL.value,
+                "processados": 0,
+                "restantes": self._restantes(job.id),
+                "erro": motivo,
+            }
+        db.update_job(job.id, error=None)
+        return resultado
+
+    async def _tick(
+        self, job: Job, *, budget_seconds: int | None = None, max_items: int | None = None
+    ) -> dict:
         """Processa um punhado de itens e devolve o que ainda falta.
 
         É o formato que cabe numa função de curta duração: em vez de segurar o
@@ -295,6 +331,14 @@ class JobRunner:
 
         if job.status in {JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.FAILED}:
             return {"jobId": job_id, "status": job.status.value, "processados": 0, "restantes": 0}
+
+        # Uma execução anterior pode ter morrido no meio (a Vercel corta a função
+        # aos 60 segundos). Sem devolver o item reservado, ele ficaria parado
+        # para sempre e a tela nunca sairia de "processando".
+        try:
+            db.reclaim_expired(job_id)
+        except Exception:
+            logger.exception("job=%s falha ao devolver reservas vencidas", job_id)
 
         events = db.get_events(job_id, with_links=False)
         links = db.get_links(job_id)
@@ -318,55 +362,96 @@ class JobRunner:
         fonte = self.fonte(job) if settings.serverless else None
         context = self.montar_contexto(job, events, provider, fonte)
         cost = job.cost.model_copy()
+
+        # Os itens do bloco correm juntos, respeitando o limite por tipo. Fazer um
+        # de cada vez multiplicava a espera pelo número de mídias — três áudios
+        # viravam três esperas somadas em vez de uma só.
+        semaforos = {
+            categoria: asyncio.Semaphore(max(1, getattr(settings, atributo)))
+            for categoria, atributo in CONCURRENCY_KEYS.items()
+        }
         processados = 0
         budget_hit = False
 
-        try:
-            for evento in pendentes_eventos:
-                if processados >= limite_itens or time.monotonic() - comeco > limite_tempo:
-                    break
-                if not db.lease_event(job_id, evento.id):
-                    continue  # outra execução pegou este item
-                processador = processor_for(evento.type)
-                if processador is None:
-                    continue
+        def tempo_restante() -> float:
+            return max(5.0, limite_tempo - (time.monotonic() - comeco))
+
+        async def tratar_evento(evento: Event) -> None:
+            nonlocal processados, budget_hit
+            processador = processor_for(evento.type)
+            if processador is None:
+                return
+            if not db.lease_event(job_id, evento.id, seconds=limite_tempo * 2):
+                return  # outra execução pegou este item
+            async with semaforos.get(processador.category, semaforos["image"]):
+                if budget_hit:
+                    db.update_event(job_id, evento.id, processing_status=ProcessingStatus.PENDING)
+                    return
                 try:
-                    resultado = await processador.process(evento, context)
+                    resultado = await asyncio.wait_for(
+                        processador.process(evento, context), timeout=tempo_restante()
+                    )
+                except TimeoutError:
+                    # Volta para a fila: a próxima rodada tenta de novo com o tempo
+                    # inteiro, em vez de a função ser cortada no meio sem registro.
+                    logger.warning("job=%s event=%s estourou o tempo do bloco", job_id, evento.index)
+                    db.update_event(
+                        job_id, evento.id,
+                        processing_status=ProcessingStatus.PENDING,
+                        processing_error="Demorou mais que o tempo do bloco; será tentado de novo.",
+                    )
+                    return
                 except BudgetExceeded as exc:
                     budget_hit = True
                     db.update_event(job_id, evento.id, processing_status=ProcessingStatus.PENDING,
                                  processing_error=f"Processamento pausado: {exc}")
-                    break
+                    return
                 except Exception as exc:
                     logger.exception("job=%s event=%s falha no processador", job_id, evento.index)
                     db.update_event(job_id, evento.id, processing_status=ProcessingStatus.FAILED,
                                  processing_error=_sanitize(str(exc)))
                     processados += 1
-                    continue
+                    return
                 _apply_outcome(job_id, evento, resultado, cost)
                 processados += 1
                 logger.info("job=%s event=%d type=%s status=%s", job_id, evento.index,
                             evento.type.value, resultado.status.value)
 
-            for link in pendentes_links:
-                if budget_hit or processados >= limite_itens or time.monotonic() - comeco > limite_tempo:
-                    break
-                if not db.lease_link(job_id, link.id):
-                    continue
+        async def tratar_link(link: LinkItem) -> None:
+            nonlocal processados
+            if budget_hit:
+                return
+            if not db.lease_link(job_id, link.id, seconds=limite_tempo * 2):
+                return
+            async with semaforos["link"]:
                 try:
-                    resultado = await link_processor().process(link, context)
+                    resultado = await asyncio.wait_for(
+                        link_processor().process(link, context), timeout=tempo_restante()
+                    )
+                except TimeoutError:
+                    db.update_link(job_id, link.id, status=ProcessingStatus.PENDING.value,
+                                error="Demorou mais que o tempo do bloco; será tentado de novo.")
+                    return
                 except Exception as exc:
                     logger.exception("job=%s link falha", job_id)
                     db.update_link(job_id, link.id, status=ProcessingStatus.FAILED.value,
                                 error=_sanitize(str(exc)))
                     processados += 1
-                    continue
+                    return
                 db.update_link(job_id, link.id, status=resultado.status.value,
                             title=resultado.metadata.get("title"),
                             description=resultado.metadata.get("description"),
                             content=resultado.text, error=resultado.error,
                             metadata=resultado.metadata)
                 processados += 1
+
+        do_bloco = (pendentes_eventos + pendentes_links)[:limite_itens]
+        tarefas = [
+            tratar_evento(item) if isinstance(item, Event) else tratar_link(item)
+            for item in do_bloco
+        ]
+        try:
+            await asyncio.gather(*tarefas)
         finally:
             await provider.aclose()
             if fonte is not None:

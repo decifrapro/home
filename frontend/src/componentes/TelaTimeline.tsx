@@ -50,8 +50,12 @@ export function TelaTimeline({ job, aoAtualizar, aoApagar }: Props) {
   const [busca, setBusca] = useState('')
   const [mensagem, setMensagem] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState(false)
-  const filtros = useMemo(() => ({ type: tipo, search: busca }), [tipo, busca])
-  const { eventos, total, carregando, erro, recarregar } = useEventos(job.id, filtros)
+  const [verAvisos, setVerAvisos] = useState(false)
+  const filtros = useMemo(
+    () => ({ type: tipo, search: busca, avisos: verAvisos }),
+    [tipo, busca, verAvisos],
+  )
+  const { eventos, total, avisosOcultos, carregando, erro, recarregar } = useEventos(job.id, filtros)
 
   const falhas = Object.values(job.coverage.categories).reduce((soma, item) => soma + item.failed, 0)
 
@@ -186,6 +190,23 @@ export function TelaTimeline({ job, aoAtualizar, aoApagar }: Props) {
       <p className="fraco" aria-live="polite">
         {carregando ? 'Carregando…' : `${total} evento${total === 1 ? '' : 's'} nesta visão.`}
       </p>
+
+      {(avisosOcultos > 0 || verAvisos) && (
+        <p className="fraco">
+          {verAvisos
+            ? 'Mostrando também os avisos automáticos do WhatsApp.'
+            : `${avisosOcultos} aviso${avisosOcultos === 1 ? '' : 's'} automático${
+                avisosOcultos === 1 ? '' : 's'
+              } do WhatsApp fora da conversa (nada foi apagado).`}{' '}
+          <button
+            type="button"
+            className="botao botao--secundario botao--pequeno"
+            onClick={() => setVerAvisos((atual) => !atual)}
+          >
+            {verAvisos ? 'esconder' : 'mostrar'}
+          </button>
+        </p>
+      )}
 
       {erro && (
         <p className="aviso aviso--erro" role="alert">

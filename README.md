@@ -285,7 +285,7 @@ Tudo está em `.env.example`, comentado. As que mais importam:
 | `OPENAI_TRANSCRIPTION_MODEL` | Modelo de transcrição (padrão `gpt-4o-transcribe`) |
 | `OPENAI_VISION_MODEL` | Modelo de visão (padrão `gpt-4.1-mini`) |
 | `MAX_JOB_COST_USD` | Teto de gasto por atendimento |
-| `AUTO_CONFIRM_PROCESSING` | `true` pula a tela de confirmação de custo |
+| `AUTO_CONFIRM_PROCESSING` | `true` (padrão) decifra as mídias assim que o ZIP é lido; `false` mostra a tela de confirmação de custo antes |
 | `JOB_RETENTION_HOURS` | Depois disso o atendimento é apagado automaticamente |
 | `MAX_ZIP_MB` e afins | Limites de upload e de extração |
 | `*_CONCURRENCY` | Quantas chamadas simultâneas por tipo de mídia |

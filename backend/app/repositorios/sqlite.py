@@ -297,6 +297,27 @@ def lease_event(job_id: str, event_id: str, seconds: int = 300) -> bool:
         return cursor.rowcount > 0
 
 
+def reclaim_expired(job_id: str) -> int:
+    """Devolve para a fila os itens cuja reserva venceu."""
+    agora = datetime.now().isoformat()
+    with _lock:
+        conn = connect()
+        eventos = conn.execute(
+            "UPDATE events SET processing_status = 'pending', leased_until = NULL"
+            " WHERE job_id = ? AND processing_status = 'processing'"
+            " AND leased_until IS NOT NULL AND leased_until < ?",
+            (job_id, agora),
+        ).rowcount
+        links = conn.execute(
+            "UPDATE links SET status = 'pending', leased_until = NULL"
+            " WHERE job_id = ? AND status = 'processing'"
+            " AND leased_until IS NOT NULL AND leased_until < ?",
+            (job_id, agora),
+        ).rowcount
+        conn.commit()
+        return eventos + links
+
+
 def lease_link(job_id: str, link_id: str, seconds: int = 300) -> bool:
     limite = (datetime.now() + timedelta(seconds=seconds)).isoformat()
     agora = datetime.now().isoformat()
