@@ -142,6 +142,11 @@ class CategoryCoverage(BaseModel):
     pending: int = 0
     unsupported: int = 0
     unresolved: int = 0
+    # Itens que não foram decifrados por inteiro mas de que alguma coisa foi
+    # recuperada — o vídeo de que saiu a fala, mas não a descrição da imagem.
+    # Sem isso a tela mostrava esse caso igualzinho a "não deu nada", e a
+    # diferença entre ter e não ter o conteúdo ficava invisível.
+    partial: int = 0
 
     @property
     def complete(self) -> bool:

@@ -9,6 +9,7 @@ import { NOME_POR_CATEGORIA } from './comum'
 export function Cobertura({ job }: { job: Job }) {
   const categorias = Object.entries(job.coverage.categories).filter(([, dados]) => dados.total > 0)
   const completo = job.coverage.complete
+  const parciais = categorias.reduce((soma, [, dados]) => soma + (dados.partial ?? 0), 0)
 
   return (
     <section className="cartao" aria-labelledby="titulo-cobertura">
@@ -41,10 +42,15 @@ export function Cobertura({ job }: { job: Job }) {
                 {dados.done} / {dados.total}{' '}
                 {dados.complete ? (
                   <span className="selo selo--decifrado">completo</span>
+                ) : dados.partial ? (
+                  // Parte do conteúdo existe. Mostrar isso igual a "não deu nada"
+                  // escondia justamente o que o sistema conseguiu recuperar.
+                  <span className="selo selo--parcial">
+                    {dados.partial} {dados.partial > 1 ? 'parciais' : 'parcial'}
+                  </span>
                 ) : dados.failed ? (
                   <span className="selo selo--falha">{dados.failed} com falha</span>
                 ) : dados.unsupported && dados.done + dados.unsupported === dados.total ? (
-                  // Nada está na fila: estes itens esta instalação não consegue ler.
                   <span className="selo selo--pendente">
                     {dados.unsupported} sem suporte aqui
                   </span>
@@ -58,6 +64,14 @@ export function Cobertura({ job }: { job: Job }) {
           ))}
         </tbody>
       </table>
+
+      {parciais > 0 && (
+        <p className="fraco" style={{ marginTop: 10, marginBottom: 0 }}>
+          <strong>Parcial</strong> quer dizer que parte do conteúdo foi recuperada e já está no
+          histórico. Nos vídeos, a fala foi transcrita — o que não sai aqui é a descrição do que
+          aparece na imagem, e é por isso que a cobertura não chega a 100%.
+        </p>
+      )}
     </section>
   )
 }

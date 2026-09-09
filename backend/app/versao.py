@@ -7,4 +7,4 @@ ar já contém a última correção.
 
 from __future__ import annotations
 
-VERSAO = "009"
+VERSAO = "010"

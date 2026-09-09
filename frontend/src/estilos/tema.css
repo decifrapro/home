@@ -535,3 +535,9 @@ details summary {
     animation-duration: 3s;
   }
 }
+
+/* Parcial: parte do conteúdo veio. Não é sucesso, não é fracasso. */
+.selo--parcial {
+  color: var(--decifrado);
+  border-color: var(--decifrado);
+}

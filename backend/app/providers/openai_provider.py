@@ -82,7 +82,12 @@ class OpenAIProvider:
         raise last_error or ProviderError("falha desconhecida no provedor", True)
 
     async def transcribe(
-        self, path: Path, *, language: str | None = None, hint: str | None = None
+        self,
+        path: Path,
+        *,
+        language: str | None = None,
+        hint: str | None = None,
+        mime: str | None = None,
     ) -> TranscriptionResult:
         model = self._settings.openai_transcription_model
         data: dict[str, str] = {"model": model, "response_format": "json"}
@@ -91,7 +96,9 @@ class OpenAIProvider:
         if hint:
             data["prompt"] = hint[:900]
 
-        mime = mimetypes.guess_type(path.name)[0] or "audio/mpeg"
+        # O MP4 de um vídeo é enviado como áudio: é a trilha falada que interessa,
+        # e anunciá-lo como "video/..." arrisca uma recusa do provedor.
+        mime = mime or mimetypes.guess_type(path.name)[0] or "audio/mpeg"
         with path.open("rb") as handle:
             response = await self._post(
                 "/audio/transcriptions",

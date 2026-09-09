@@ -30,11 +30,14 @@ _TYPE_TO_CATEGORY = {
 }
 
 
-def _bump(bucket: CategoryCoverage, status: ProcessingStatus) -> None:
+def _bump(bucket: CategoryCoverage, status: ProcessingStatus, tem_conteudo: bool = False) -> None:
     bucket.total += 1
     if status == ProcessingStatus.DONE:
         bucket.done += 1
-    elif status == ProcessingStatus.FAILED:
+        return
+    if tem_conteudo:
+        bucket.partial += 1
+    if status == ProcessingStatus.FAILED:
         bucket.failed += 1
     elif status == ProcessingStatus.UNSUPPORTED:
         bucket.unsupported += 1
@@ -42,6 +45,17 @@ def _bump(bucket: CategoryCoverage, status: ProcessingStatus) -> None:
         bucket.unresolved += 1
     else:
         bucket.pending += 1
+
+
+def _recuperou_algo(event: Event) -> bool:
+    """Sobrou conteúdo útil mesmo sem o item ter sido decifrado por inteiro?"""
+    meta = event.metadata or {}
+    return bool(
+        (event.processed_text or "").strip()
+        or (meta.get("transcript") or "").strip()
+        or (meta.get("visual_description") or "").strip()
+        or (meta.get("ocr_text") or "").strip()
+    )
 
 
 def compute_coverage(events: list[Event], links: list[LinkItem] | None = None) -> Coverage:
@@ -59,7 +73,7 @@ def compute_coverage(events: list[Event], links: list[LinkItem] | None = None) -
         if event.type == EventType.LINK:
             # O corpo do evento de link é texto; as URLs entram pela lista de links.
             category = "text"
-        _bump(coverage.categories[category], event.processing_status)
+        _bump(coverage.categories[category], event.processing_status, _recuperou_algo(event))
 
     all_links = links if links is not None else [link for event in events for link in event.links]
     for link in all_links:

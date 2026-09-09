@@ -88,6 +88,7 @@ export interface CoberturaCategoria {
   failed: number
   pending: number
   unsupported: number
+  partial: number
   unresolved: number
   complete: boolean
 }

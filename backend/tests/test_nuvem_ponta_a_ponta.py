@@ -116,13 +116,22 @@ async def test_fluxo_completo_no_modo_vercel(nuvem, client):
 
     assert audio["processingStatus"] == "done"
     assert audio["processedText"] == "boa tarde, seu Rui"
-    assert provedor.transcribe_calls[0].suffix == ".ogg", "o .opus vai como .ogg, sem converter"
+    # Os itens do bloco correm juntos, então a ordem das chamadas não é fixa:
+    # o que importa é que o .opus tenha ido como .ogg, sem conversão.
+    sufixos = [chamada.suffix for chamada in provedor.transcribe_calls]
+    assert ".ogg" in sufixos, "o .opus vai como .ogg, sem converter"
+    assert ".opus" not in sufixos
     assert imagem["processingStatus"] == "done"
     assert imagem["metadata"]["ocrText"]
     assert pdf["processingStatus"] == "done"
     assert "R$ 4.200,00" in pdf["processedText"]
+    # Sem FFmpeg não há descrição visual, mas a fala do vídeo é recuperada — e o
+    # MP4 vai anunciado como áudio, que é o que o provedor de transcrição aceita.
     assert video["processingStatus"] == "unsupported"
     assert "sem FFmpeg" in video["processingError"]
+    assert video["metadata"]["transcript"] == "boa tarde, seu Rui"
+    assert ".mp4" in sufixos
+    assert "audio/mp4" in provedor.transcribe_mimes
 
     link = next(e for e in eventos if e["links"])["links"][0]
     assert link["status"] == "done"

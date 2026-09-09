@@ -27,11 +27,15 @@ class FakeProvider:
         self.fail_vision_times = fail_vision_times
         self.permanent_failure = permanent_failure
         self.transcribe_calls: list[Path] = []
+        self.transcribe_mimes: list[str | None] = []
         self.vision_calls: list[tuple[Path, str]] = []
         self.closed = False
 
-    async def transcribe(self, path: Path, *, language=None, hint=None) -> TranscriptionResult:
+    async def transcribe(
+        self, path: Path, *, language=None, hint=None, mime=None
+    ) -> TranscriptionResult:
         self.transcribe_calls.append(path)
+        self.transcribe_mimes.append(mime)
         if self.permanent_failure:
             raise ProviderError("provedor indisponível", retryable=False)
         if self.fail_transcription_times > 0:

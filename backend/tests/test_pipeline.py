@@ -331,3 +331,29 @@ async def test_exportacao_sem_midia_avisa_o_usuario(client, make_zip):
     assert "Incluir mídia" in aviso["message"]
     eventos = client.get(f"/api/jobs/{job_id}/events").json()["events"]
     assert all(e["processingStatus"] == ProcessingStatus.UNSUPPORTED.value for e in eventos)
+
+
+async def test_cobertura_separa_o_que_veio_pela_metade_do_que_nao_veio(client, make_zip):
+    """Vídeo com a fala transcrita não pode ser contado igual a vídeo sem nada."""
+    from app.models.schemas import Event, EventType, ProcessingStatus
+    from app.services.coverage import compute_coverage
+
+    com_fala = Event(
+        id="a", index=0, raw_timestamp="x", type=EventType.VIDEO,
+        processing_status=ProcessingStatus.UNSUPPORTED,
+        processed_text="bom dia", metadata={"transcript": "bom dia"},
+    )
+    sem_nada = Event(
+        id="b", index=1, raw_timestamp="x", type=EventType.VIDEO,
+        processing_status=ProcessingStatus.UNSUPPORTED,
+    )
+
+    cobertura = compute_coverage([com_fala, sem_nada])
+    video = cobertura.categories["video"]
+
+    assert video.total == 2
+    assert video.partial == 1
+    assert video.unsupported == 2
+    # Nada disso conta como decifrado: a cobertura continua abaixo de 100%.
+    assert video.done == 0
+    assert not video.complete

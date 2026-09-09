@@ -19,7 +19,7 @@ describe('cobertura', () => {
     const job = jobDeExemplo({
       coverage: {
         categories: {
-          text: { total: 10, done: 10, failed: 0, pending: 0, unsupported: 0, unresolved: 0, complete: true },
+          text: { total: 10, done: 10, failed: 0, pending: 0, unsupported: 0, partial: 0, unresolved: 0, complete: true },
         },
         overallTotal: 10,
         overallDone: 10,
@@ -344,5 +344,30 @@ describe('esperas com sinal de vida', () => {
     expect(screen.getByText(/Lendo a conversa/)).toBeInTheDocument()
     expect(screen.queryByText(/0 de 0/)).not.toBeInTheDocument()
     expect(container.querySelector('.progresso__giro')).not.toBeNull()
+  })
+})
+
+describe('conteúdo parcialmente recuperado', () => {
+  it('não mostra vídeo com a fala transcrita como se nada tivesse saído', () => {
+    const job = jobDeExemplo({
+      coverage: {
+        categories: {
+          video: {
+            total: 2, done: 0, failed: 0, pending: 0,
+            unsupported: 2, partial: 2, unresolved: 0, complete: false,
+          },
+        },
+        overallTotal: 2,
+        overallDone: 0,
+        percent: 0,
+        complete: false,
+      },
+    })
+
+    render(<Cobertura job={job} />)
+    const selo = document.querySelector('.selo--parcial')
+    expect(selo?.textContent?.replace(/\s+/g, ' ')).toBe('2 parciais')
+    expect(screen.queryByText(/sem suporte aqui/)).not.toBeInTheDocument()
+    expect(screen.getByText(/a fala foi transcrita/)).toBeInTheDocument()
   })
 })

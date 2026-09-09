@@ -58,6 +58,10 @@ export function TelaTimeline({ job, aoAtualizar, aoApagar }: Props) {
   const { eventos, total, avisosOcultos, carregando, erro, recarregar } = useEventos(job.id, filtros)
 
   const falhas = Object.values(job.coverage.categories).reduce((soma, item) => soma + item.failed, 0)
+  const parciais = Object.values(job.coverage.categories).reduce(
+    (soma, item) => soma + (item.partial ?? 0),
+    0,
+  )
 
   async function copiarHistorico() {
     setOcupado(true)
@@ -119,8 +123,12 @@ export function TelaTimeline({ job, aoAtualizar, aoApagar }: Props) {
 
         {job.status === 'partial' && (
           <p className="aviso">
-            ⚠ Este histórico está incompleto: {job.coverage.overallTotal - job.coverage.overallDone}{' '}
-            itens não foram decifrados. O que já está pronto pode ser baixado normalmente.
+            ⚠ Este histórico está incompleto:{' '}
+            {job.coverage.overallTotal - job.coverage.overallDone} itens não foram decifrados por
+            inteiro
+            {parciais > 0 &&
+              ` — destes, ${parciais} entrou${parciais > 1 ? 'ram' : ''} parcialmente (a fala do vídeo foi transcrita; a imagem não é analisada aqui)`}
+            . O que já está pronto pode ser baixado normalmente.
           </p>
         )}
 

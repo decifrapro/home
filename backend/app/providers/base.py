@@ -44,7 +44,12 @@ class AIProvider(Protocol):
     available: bool
 
     async def transcribe(
-        self, path: Path, *, language: str | None = None, hint: str | None = None
+        self,
+        path: Path,
+        *,
+        language: str | None = None,
+        hint: str | None = None,
+        mime: str | None = None,
     ) -> TranscriptionResult: ...
 
     async def describe_image(

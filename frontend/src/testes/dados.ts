@@ -67,8 +67,8 @@ export function jobDeExemplo(parcial: Partial<Job> = {}): Job {
     },
     coverage: {
       categories: {
-        text: { total: 185, done: 185, failed: 0, pending: 0, unsupported: 0, unresolved: 0, complete: true },
-        audio: { total: 41, done: 40, failed: 1, pending: 0, unsupported: 0, unresolved: 0, complete: false },
+        text: { total: 185, done: 185, failed: 0, pending: 0, unsupported: 0, partial: 0, unresolved: 0, complete: true },
+        audio: { total: 41, done: 40, failed: 1, pending: 0, unsupported: 0, partial: 0, unresolved: 0, complete: false },
       },
       overallTotal: 226,
       overallDone: 225,

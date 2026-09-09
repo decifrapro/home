@@ -74,7 +74,9 @@ class VideoProcessor(MediaProcessor):
         duracao = estimar_duracao_do_video(path.stat().st_size)
         try:
             context.budget.check(transcription_cost(settings, duracao))
-            resultado = await context.provider.transcribe(path, hint=context.conversation_hint)
+            resultado = await context.provider.transcribe(
+                path, hint=context.conversation_hint, mime="audio/mp4"
+            )
         except BudgetExceeded:
             raise
         except ProviderError as exc:
