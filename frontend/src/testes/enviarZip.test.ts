@@ -29,6 +29,7 @@ describe('enviarZip', () => {
   it('envia todos os pedaços em ordem e informa progresso real', async () => {
     const chamadas: string[] = []
     const progresso: number[] = []
+    const etapas: (string | undefined)[] = []
     const requisitar = vi.fn(async (url: string) => {
       chamadas.push(url)
       if (url === '/api/jobs') return respostaOk({ id: 'abc123' })
@@ -39,7 +40,10 @@ describe('enviarZip', () => {
       arquivo: arquivoFalso(2500),
       tamanhoDoPedaco: 1000,
       requisitar,
-      aoProgredir: (info) => progresso.push(info.porcentagem),
+      aoProgredir: (info) => {
+        progresso.push(info.porcentagem)
+        etapas.push(info.etapa)
+      },
     })
 
     expect(jobId).toBe('abc123')
@@ -51,7 +55,11 @@ describe('enviarZip', () => {
       '/api/jobs/abc123/upload/chunk?index=2',
       '/api/jobs/abc123/upload/complete',
     ])
-    expect(progresso).toEqual([40, 80, 100])
+    // A última entrada é a virada de etapa: o arquivo subiu e agora a conversa
+    // está sendo lida — sem isso a tela ficava parada em "Enviando… 100%".
+    expect(progresso).toEqual([40, 80, 100, 100])
+    expect(etapas[etapas.length - 1]).toBe('lendo')
+    expect(etapas.slice(0, -1).every((etapa) => etapa === undefined)).toBe(true)
   })
 
   it('reenvia o pedaço que falhou e segue em frente', async () => {
@@ -142,6 +150,7 @@ describe('enviarZipDireto (modo nuvem)', () => {
     const { enviarZipDireto } = await import('../upload/enviarZipDireto')
     const chamadas: string[] = []
     const progresso: number[] = []
+    const etapas: (string | undefined)[] = []
 
     const requisitar = vi.fn(async (url: string) => {
       chamadas.push(url)
@@ -162,7 +171,10 @@ describe('enviarZipDireto (modo nuvem)', () => {
       arquivo: arquivoFalso(1000),
       requisitar,
       enviarArquivo,
-      aoProgredir: (info) => progresso.push(info.porcentagem),
+      aoProgredir: (info) => {
+        progresso.push(info.porcentagem)
+        etapas.push(info.etapa)
+      },
     })
 
     expect(jobId).toBe('job9')
@@ -171,7 +183,8 @@ describe('enviarZipDireto (modo nuvem)', () => {
       '/api/jobs/job9/upload/link',
       '/api/jobs/job9/upload/registrado',
     ])
-    expect(progresso).toEqual([50, 100])
+    expect(progresso).toEqual([50, 100, 100])
+    expect(etapas[etapas.length - 1]).toBe('lendo')
     expect(enviarArquivo).toHaveBeenCalledOnce()
   })
 

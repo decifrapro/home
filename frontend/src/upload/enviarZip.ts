@@ -6,12 +6,22 @@
  * crescente, e o usuário pode cancelar a qualquer momento.
  */
 
+/**
+ * Em que ponto está o envio.
+ *
+ * Depois que o arquivo termina de subir ainda falta ler a conversa inteira de
+ * dentro dele, e isso demora. Sem distinguir as duas etapas, a tela ficava
+ * parada em "Enviando… 100%" e parecia travada justamente na parte mais lenta.
+ */
+export type EtapaDoEnvio = 'enviando' | 'lendo'
+
 export interface ProgressoDoEnvio {
   enviados: number
   total: number
   porcentagem: number
   pedacoAtual: number
   totalDePedacos: number
+  etapa?: EtapaDoEnvio
 }
 
 export interface OpcoesDeEnvio {
@@ -129,6 +139,14 @@ export async function enviarZip(opcoes: OpcoesDeEnvio): Promise<string> {
   }
 
   conferirCancelamento(sinal)
+  aoProgredir?.({
+    enviados: arquivo.size,
+    total: arquivo.size,
+    porcentagem: 100,
+    pedacoAtual: fatias.length,
+    totalDePedacos: fatias.length,
+    etapa: 'lendo',
+  })
   const conclusao = await requisitar(`/api/jobs/${jobId}/upload/complete`, {
     method: 'POST',
     credentials: 'same-origin',

@@ -55,7 +55,12 @@ export function App() {
   if (!configuracao) {
     return (
       <div className="pagina">
-        <p className="fraco">Carregando…</p>
+        <div className="progresso">
+          <span className="progresso__giro" aria-hidden="true" />
+          <div className="progresso__texto">
+            <p>Carregando…</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -143,7 +148,12 @@ export function App() {
 
       {jobId && !job && (
         <div className="pagina">
-          <p className="fraco">Carregando o atendimento…</p>
+          <div className="progresso">
+            <span className="progresso__giro" aria-hidden="true" />
+            <div className="progresso__texto">
+              <p>Abrindo o atendimento…</p>
+            </div>
+          </div>
         </div>
       )}
     </>

@@ -132,17 +132,35 @@ export function TelaUpload({ configuracao, aoEnviar }: Props) {
             <div className="barra">
               <div className="barra__preenchimento" style={{ width: `${progresso.porcentagem}%` }} />
             </div>
-            <p className="fraco" style={{ marginTop: 8 }}>
-              Enviando… {progresso.porcentagem}%
-              {progresso.totalDePedacos > 0 && ` (parte ${progresso.pedacoAtual} de ${progresso.totalDePedacos})`}
-            </p>
-            <button
-              type="button"
-              className="botao botao--secundario"
-              onClick={() => cancelamento.current?.abort()}
-            >
-              Cancelar envio
-            </button>
+            {progresso.etapa === 'lendo' ? (
+              // O arquivo já subiu. Esta espera é a leitura da conversa e não
+              // tem porcentagem para mostrar — então mostra o giro e diz o quê.
+              <div className="progresso" style={{ marginTop: 10 }}>
+                <span className="progresso__giro" aria-hidden="true" />
+                <div className="progresso__texto">
+                  <p>Lendo a conversa…</p>
+                  <p className="fraco">
+                    Arquivo enviado. Estou abrindo o ZIP e montando a conversa — em conversas
+                    grandes isso leva alguns minutos.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="fraco" style={{ marginTop: 8 }}>
+                Enviando… {progresso.porcentagem}%
+                {progresso.totalDePedacos > 0 &&
+                  ` (parte ${progresso.pedacoAtual} de ${progresso.totalDePedacos})`}
+              </p>
+            )}
+            {progresso.etapa !== 'lendo' && (
+              <button
+                type="button"
+                className="botao botao--secundario"
+                onClick={() => cancelamento.current?.abort()}
+              >
+                Cancelar envio
+              </button>
+            )}
           </div>
         )}
 

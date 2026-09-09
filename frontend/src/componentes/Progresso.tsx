@@ -36,6 +36,22 @@ export function Progresso({ job }: { job: Job }) {
     return () => window.clearInterval(relogio)
   }, [])
 
+  // Antes de a conversa ser lida não existe item nenhum: dizer "0 de 0" faria a
+  // tela parecer quebrada logo no começo, que é justamente quando mais demora.
+  if (total === 0) {
+    return (
+      <div className="progresso">
+        <span className="progresso__giro" aria-hidden="true" />
+        <div className="progresso__texto">
+          <p aria-live="polite">Lendo a conversa…</p>
+          <p className="fraco">
+            Abrindo o ZIP e montando a linha do tempo. Pode fechar esta aba — o servidor continua.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="progresso">
       <span className="progresso__giro" aria-hidden="true" />

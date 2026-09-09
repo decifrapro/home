@@ -94,6 +94,17 @@ export async function enviarZipDireto(opcoes: OpcoesDeEnvioDireto): Promise<stri
 
   if (sinal?.aborted) throw new EnvioCancelado()
 
+  // O arquivo já subiu; agora o servidor lê a conversa de dentro dele. É a
+  // parte mais demorada, e precisa dizer isso em vez de parecer parada.
+  aoProgredir?.({
+    enviados: arquivo.size,
+    total: arquivo.size,
+    porcentagem: 100,
+    pedacoAtual: 1,
+    totalDePedacos: 1,
+    etapa: 'lendo',
+  })
+
   const registro = await requisitar(`/api/jobs/${jobId}/upload/registrado`, {
     method: 'POST',
     credentials: 'same-origin',

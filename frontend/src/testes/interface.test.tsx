@@ -313,3 +313,36 @@ describe('Progresso', () => {
     expect(screen.getByText(/Trabalhando/)).toBeInTheDocument()
   })
 })
+
+describe('tela de processamento', () => {
+  it('mostra o giro e a porcentagem enquanto decifra', async () => {
+    const { TelaProcessando } = await import('../componentes/TelaProcessando')
+    const job = jobDeExemplo({ status: 'processing' })
+
+    const { container } = render(
+      <TelaProcessando
+        job={job}
+        aoConfirmar={vi.fn()}
+        aoCancelar={vi.fn()}
+        aoVerConversa={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('.progresso__giro')).not.toBeNull()
+    expect(screen.getByText(/itens decifrados/)).toBeInTheDocument()
+  })
+})
+
+describe('esperas com sinal de vida', () => {
+  it('diz que está lendo a conversa antes de existir item', async () => {
+    const { Progresso } = await import('../componentes/Progresso')
+    const job = {
+      coverage: { percent: 0, overallDone: 0, overallTotal: 0, complete: false, categories: {} },
+    } as never
+
+    const { container } = render(<Progresso job={job} />)
+    expect(screen.getByText(/Lendo a conversa/)).toBeInTheDocument()
+    expect(screen.queryByText(/0 de 0/)).not.toBeInTheDocument()
+    expect(container.querySelector('.progresso__giro')).not.toBeNull()
+  })
+})
