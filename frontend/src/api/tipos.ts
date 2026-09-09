@@ -76,6 +76,8 @@ export interface Evento {
     edited?: boolean | null
     forwarded?: boolean | null
     deleted?: boolean | null
+    segundos?: number | null
+    segundosBuscandoArquivo?: number | null
   }
   links: LinkDoEvento[]
 }

@@ -381,6 +381,7 @@ class JobRunner:
         fonte = self.fonte(job) if settings.serverless else None
         context = self.montar_contexto(job, events, provider, fonte)
         cost = job.cost.model_copy()
+        segundos_de_preparo = round(time.monotonic() - comeco, 1)
 
         # Os itens do bloco correm juntos, respeitando o limite por tipo. Fazer um
         # de cada vez multiplicava a espera pelo número de mídias — três áudios
@@ -410,6 +411,7 @@ class JobRunner:
             if not db.lease_event(job_id, evento.id, seconds=limite_tempo * 2):
                 return  # outra execução pegou este item
             async with semaforos.get(processador.category, semaforos["image"]):
+                comecou_o_item = time.monotonic()
                 if budget_hit:
                     db.update_event(job_id, evento.id, processing_status=ProcessingStatus.PENDING)
                     return
@@ -458,10 +460,17 @@ class JobRunner:
                                  processing_error=_sanitize(str(exc)))
                     processados += 1
                     return
-                _apply_outcome(job_id, evento, resultado, cost)
+                busca = context.tempo_de_busca.get(evento.id, 0.0)
+                total = round(time.monotonic() - comecou_o_item, 1)
+                _apply_outcome(
+                    job_id, evento, resultado, cost,
+                    tempos={"segundos": total, "segundosBuscandoArquivo": busca},
+                )
                 processados += 1
-                logger.info("job=%s event=%d type=%s status=%s", job_id, evento.index,
-                            evento.type.value, resultado.status.value)
+                logger.info(
+                    "job=%s event=%d type=%s status=%s %ss (busca %ss)",
+                    job_id, evento.index, evento.type.value, resultado.status.value, total, busca,
+                )
 
         async def tratar_link(link: LinkItem) -> None:
             nonlocal processados
@@ -503,7 +512,19 @@ class JobRunner:
             if fonte is not None:
                 fonte.fechar()
 
-        db.update_job(job_id, cost=cost)
+        duracao = round(time.monotonic() - comeco, 1)
+        db.update_job(
+            job_id,
+            cost=cost,
+            metadata={
+                **(job.metadata or {}),
+                "ultimoBloco": {
+                    "segundos": duracao,
+                    "segundosDePreparo": segundos_de_preparo,
+                    "itens": processados,
+                },
+            },
+        )
         atual = db.get_job(job_id) or job
         restantes = self._restantes(job_id)
         if restantes == 0 or budget_hit:
@@ -517,6 +538,8 @@ class JobRunner:
             "processados": processados,
             "restantes": restantes,
             "cobertura": coverage.percent,
+            "segundos": duracao,
+            "segundosDePreparo": segundos_de_preparo,
         }
 
     def _restantes(self, job_id: str) -> int:
@@ -703,9 +726,17 @@ class JobRunner:
         )
 
 
-def _apply_outcome(job_id: str, event: Event, outcome: ProcessingOutcome, cost: CostBreakdown) -> None:
+def _apply_outcome(
+    job_id: str,
+    event: Event,
+    outcome: ProcessingOutcome,
+    cost: CostBreakdown,
+    tempos: dict | None = None,
+) -> None:
     metadata = dict(event.metadata or {})
     metadata.update(outcome.metadata or {})
+    if tempos:
+        metadata.update(tempos)
     if outcome.cost_usd:
         add_cost(cost, outcome.category, outcome.cost_usd)
     db.update_event(

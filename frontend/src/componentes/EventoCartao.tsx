@@ -53,6 +53,14 @@ export function EventoCartao({ evento, aoReprocessar, reprocessando }: Props) {
           Arquivo: {evento.attachmentName}
           {evento.metadata.durationSeconds ? ` · ${formatarDuracao(evento.metadata.durationSeconds)}` : ''}
           {evento.metadata.pagesCount ? ` · ${evento.metadata.pagesCount} páginas` : ''}
+          {/* Onde o tempo foi: buscar o arquivo é rede, o resto é a IA. */}
+          {evento.metadata.segundos
+            ? ` · decifrado em ${evento.metadata.segundos}s${
+                evento.metadata.segundosBuscandoArquivo
+                  ? ` (${evento.metadata.segundosBuscandoArquivo}s buscando o arquivo)`
+                  : ''
+              }`
+            : ''}
         </p>
       )}
 

@@ -18,7 +18,7 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 
 ## Versão
 
-O número aparece ao lado da logo (`v006`) e em `GET /api/config`, no campo
+O número aparece ao lado da logo (`v007`) e em `GET /api/config`, no campo
 `versao`. Serve para saber, olhando a tela, se o que está publicado já contém
 determinado ajuste.
 

@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { Job } from '../api/tipos'
 
+interface UltimoBloco {
+  segundos: number
+  segundosDePreparo: number
+  itens: number
+}
+
 /**
  * Sinal de vida do processamento.
  *
@@ -12,6 +18,7 @@ import type { Job } from '../api/tipos'
 export function Progresso({ job }: { job: Job }) {
   const feitos = job.coverage.overallDone
   const total = job.coverage.overallTotal
+  const ultimoBloco = (job.metadata as Record<string, UltimoBloco | undefined>)?.ultimoBloco
   const [desdeOUltimoAvanco, setDesdeOUltimoAvanco] = useState(0)
   const marcoDoAvanco = useRef({ feitos, quando: Date.now() })
 
@@ -36,6 +43,12 @@ export function Progresso({ job }: { job: Job }) {
         <p aria-live="polite">
           <strong>{job.coverage.percent}%</strong> — {feitos} de {total} itens decifrados.
         </p>
+        {ultimoBloco && (
+          <p className="fraco">
+            Última rodada: {ultimoBloco.segundos}s · {ultimoBloco.itens} item(ns) · preparo{' '}
+            {ultimoBloco.segundosDePreparo}s
+          </p>
+        )}
         <p className="fraco">
           {desdeOUltimoAvanco < 45
             ? 'Trabalhando… pode fechar esta aba, o servidor continua.'

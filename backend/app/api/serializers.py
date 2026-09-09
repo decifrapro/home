@@ -49,6 +49,10 @@ def event_to_dict(event: Event) -> dict:
             "edited": metadata.get("edited"),
             "forwarded": metadata.get("forwarded"),
             "deleted": metadata.get("deleted"),
+            # Quanto demorou, e quanto disso foi só buscar o arquivo. É o que
+            # permite saber se a espera é da IA ou da rede.
+            "segundos": metadata.get("segundos"),
+            "segundosBuscandoArquivo": metadata.get("segundosBuscandoArquivo"),
         },
         "links": [link_to_dict(link) for link in event.links],
     }

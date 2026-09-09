@@ -8,6 +8,7 @@ pode ser reprocessado sozinho.
 from __future__ import annotations
 
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -64,6 +65,10 @@ class ProcessingContext:
         path = self.extract_root / event.attachment_path
         return path if path.exists() else None
 
+    # Quanto tempo a busca de cada mídia levou. Separar rede de IA é o que
+    # permite saber onde o tempo foi gasto em vez de chutar.
+    tempo_de_busca: dict[str, float] = field(default_factory=dict)
+
     async def midia(self, event: Event) -> Path | None:
         """O arquivo da mídia, buscado fora da linha principal.
 
@@ -72,7 +77,11 @@ class ProcessingContext:
         (nenhum outro item avançava e o tempo limite nem chegava a ser checado).
         Numa thread, os itens do bloco realmente andam ao mesmo tempo.
         """
-        return await asyncio.to_thread(self.media_path, event)
+        inicio = time.monotonic()
+        try:
+            return await asyncio.to_thread(self.media_path, event)
+        finally:
+            self.tempo_de_busca[event.id] = round(time.monotonic() - inicio, 1)
 
     def scratch(self, event: Event, name: str) -> Path:
         target = self.work_root / event.id / name
