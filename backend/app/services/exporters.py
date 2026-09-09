@@ -81,12 +81,23 @@ def _media_body(event: Event) -> list[str]:
         lines += ["LEGENDA ORIGINAL:", event.caption, ""]
 
     if event.processing_status != ProcessingStatus.DONE:
-        note = STATUS_NOTE.get(event.processing_status, "[CONTEÚDO INDISPONÍVEL]")
-        lines.append(note)
+        lines.append(STATUS_NOTE.get(event.processing_status, "[CONTEÚDO INDISPONÍVEL]"))
         if event.processing_error:
             lines.append(f"MOTIVO: {event.processing_error}")
+        # Quando parte do conteúdo foi recuperada mesmo assim — o áudio de um
+        # vídeo numa instalação sem FFmpeg, por exemplo —, ela entra logo abaixo
+        # do motivo. Esconder o que já se sabe seria pior do que a limitação.
+        recuperado = _conteudo(event)
+        if any(linha.strip() for linha in recuperado):
+            lines += ["", *recuperado]
         return lines
 
+    return lines + _conteudo(event)
+
+
+def _conteudo(event: Event) -> list[str]:
+    """O que a IA extraiu, no formato de cada tipo de mídia."""
+    lines: list[str] = []
     meta = event.metadata or {}
     if event.type == EventType.AUDIO:
         lines += ["[TRANSCRIÇÃO DO ÁUDIO]", event.processed_text or ""]

@@ -38,6 +38,18 @@ def estimar_duracao(tamanho_bytes: int, mime: str | None = None) -> float:
     return round(tamanho_bytes / taxa, 1)
 
 
+# Um vídeo do WhatsApp gira em torno de 150 KB por segundo (imagem + som). Serve
+# só para estimar custo quando não há ffprobe para perguntar a duração real.
+BYTES_POR_SEGUNDO_VIDEO = 150_000
+
+
+def estimar_duracao_do_video(tamanho_bytes: int) -> float:
+    """Duração aproximada de um vídeo pelo tamanho, sem ffprobe."""
+    if tamanho_bytes <= 0:
+        return 0.0
+    return round(tamanho_bytes / BYTES_POR_SEGUNDO_VIDEO, 1)
+
+
 class MediaToolError(RuntimeError):
     pass
 

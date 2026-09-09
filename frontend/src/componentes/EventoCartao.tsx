@@ -26,6 +26,9 @@ const LIMITE_DE_CONTEUDO_LONGO = 900
 export function EventoCartao({ evento, aoReprocessar, reprocessando }: Props) {
   const decifrado = evento.processingStatus === 'done'
   const falhou = evento.processingStatus === 'failed'
+  const temConteudo = Boolean(
+    evento.processedText || evento.metadata.transcript || evento.metadata.visualDescription,
+  )
   const ehMidia = evento.type !== 'text' && evento.type !== 'system'
 
   return (
@@ -75,7 +78,9 @@ export function EventoCartao({ evento, aoReprocessar, reprocessando }: Props) {
         <p className="evento__original">{evento.rawText}</p>
       )}
 
-      {decifrado && ehMidia && <ConteudoDecifrado evento={evento} />}
+      {/* Mesmo sem o item estar completo, o que já foi recuperado aparece —
+          por exemplo a fala de um vídeo numa instalação sem FFmpeg. */}
+      {ehMidia && (decifrado || temConteudo) && <ConteudoDecifrado evento={evento} />}
 
       {evento.links.map((link) => (
         <div className="evento__decifrado" key={link.id}>

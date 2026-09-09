@@ -19,6 +19,7 @@ from app.services.cost import (
 )
 from app.services.media import (
     MediaToolError,
+    estimar_duracao_do_video,
     extract_audio_track,
     extract_frames,
     probe,
@@ -30,9 +31,83 @@ from app.services.media import (
 logger = logging.getLogger(__name__)
 
 
+# Contêineres que a transcrição aceita direto, sem conversão. O MP4 do WhatsApp
+# está nessa lista — é o que permite ouvir o vídeo mesmo sem FFmpeg.
+CONTEINERES_ACEITOS = {".mp4", ".m4a", ".mpeg", ".mpga", ".webm"}
+
+
 class VideoProcessor(MediaProcessor):
     category = "video"
     handles = (EventType.VIDEO,)
+
+    async def _so_a_fala(
+        self, event: Event, path, context: ProcessingContext
+    ) -> ProcessingOutcome:
+        """Sem FFmpeg: o que falaram no vídeo ainda pode ser recuperado.
+
+        O arquivo vai inteiro para a transcrição, que aceita MP4 sem conversão.
+        A parte visual continua fora — por isso o item não é dado como
+        decifrado, e a cobertura continua dizendo a verdade.
+        """
+        settings = context.settings
+        tamanho_mb = path.stat().st_size / (1024 * 1024)
+        sufixo = path.suffix.lower()
+
+        if sufixo not in CONTEINERES_ACEITOS or tamanho_mb > settings.audio_max_upload_mb:
+            motivo = (
+                f"Vídeo de {tamanho_mb:.0f} MB: acima do limite de "
+                f"{settings.audio_max_upload_mb} MB desta instalação, que roda sem FFmpeg "
+                "e não divide arquivos."
+                if sufixo in CONTEINERES_ACEITOS
+                else (
+                    f"Vídeo em {sufixo or 'formato desconhecido'}: esta instalação roda sem "
+                    "FFmpeg e só consegue ouvir os formatos que a transcrição aceita direto."
+                )
+            )
+            return ProcessingOutcome(
+                status=ProcessingStatus.UNSUPPORTED,
+                error=f"{motivo} O arquivo continua na conversa, na posição certa.",
+                metadata={"reason": "sem_ffmpeg", "size_mb": round(tamanho_mb, 1)},
+                category=self.category,
+            )
+
+        duracao = estimar_duracao_do_video(path.stat().st_size)
+        try:
+            context.budget.check(transcription_cost(settings, duracao))
+            resultado = await context.provider.transcribe(path, hint=context.conversation_hint)
+        except BudgetExceeded:
+            raise
+        except ProviderError as exc:
+            return ProcessingOutcome(
+                status=ProcessingStatus.UNSUPPORTED,
+                error=(
+                    f"Não consegui transcrever o áudio deste vídeo: {exc}. Esta instalação "
+                    "roda sem FFmpeg, então também não há descrição visual."
+                ),
+                metadata={"reason": "sem_ffmpeg"},
+                category=self.category,
+            )
+
+        gasto = transcription_cost(settings, duracao)
+        context.budget.spend(gasto)
+        fala = resultado.text.strip()
+        return ProcessingOutcome(
+            status=ProcessingStatus.UNSUPPORTED,
+            text=fala,
+            error=(
+                "Transcrevi o que foi falado neste vídeo. A parte visual não é analisada "
+                "nesta instalação, que roda sem FFmpeg — por isso o vídeo não conta como "
+                "totalmente decifrado."
+            ),
+            metadata={
+                "reason": "sem_ffmpeg",
+                "transcript": fala,
+                "duration_seconds": duracao,
+                "size_mb": round(tamanho_mb, 1),
+            },
+            cost_usd=gasto,
+            category=self.category,
+        )
 
     async def process(self, event: Event, context: ProcessingContext) -> ProcessingOutcome:
         path = await context.midia(event)
@@ -44,16 +119,7 @@ class VideoProcessor(MediaProcessor):
             )
 
         if not ffmpeg_disponivel():
-            return ProcessingOutcome(
-                status=ProcessingStatus.UNSUPPORTED,
-                error=(
-                    "Vídeo não é analisado nesta instalação, que roda sem FFmpeg. "
-                    "O arquivo continua na conversa, na posição certa, apenas sem "
-                    "transcrição e sem descrição."
-                ),
-                metadata={"reason": "sem_ffmpeg"},
-                category=self.category,
-            )
+            return await self._so_a_fala(event, path, context)
 
         settings = context.settings
         info = await probe(path)

@@ -18,7 +18,7 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 
 ## Versão
 
-O número aparece ao lado da logo (`v007`) e em `GET /api/config`, no campo
+O número aparece ao lado da logo (`v008`) e em `GET /api/config`, no campo
 `versao`. Serve para saber, olhando a tela, se o que está publicado já contém
 determinado ajuste.
 
@@ -67,8 +67,15 @@ permite fazer.
 
 O motivo da diferença é uma só ferramenta: o **FFmpeg**, que corta áudio e extrai
 cenas de vídeo. Ele precisa estar instalado na máquina, e a Vercel não permite
-instalar programas assim. Sem ele, o áudio do WhatsApp ainda é transcrito — o
-`.opus` é enviado como `.ogg`, sem conversão nenhuma — mas vídeo não tem como.
+instalar programas assim. Sem ele:
+
+- o áudio do WhatsApp continua sendo transcrito — o `.opus` é enviado como
+  `.ogg`, sem conversão nenhuma;
+- **do vídeo sai a transcrição da fala** (o MP4 vai inteiro para a transcrição,
+  que aceita esse formato), mas **não sai a descrição do que aparece na
+  imagem** — para isso seria preciso extrair quadros, e é aí que o FFmpeg faz
+  falta. Por isso o vídeo continua contando como não decifrado, e a cobertura
+  não chega a 100%.
 
 Você escolhe preenchendo (ou não) as variáveis do Supabase. Sem elas, o sistema
 usa disco e banco locais; com elas, passa a usar o Supabase.
@@ -453,8 +460,9 @@ Duas opções, conforme a tabela de [Dois jeitos de rodar](#dois-jeitos-de-rodar
 
 **Vercel + Supabase** — o caminho mais simples se você já usa esses dois
 serviços: siga [o passo a passo acima](#publicar-na-vercel-com-supabase-passo-a-passo).
-Vale lembrar do que fica de fora ali: vídeo não é analisado e áudio acima de
-24 MB não é transcrito, porque a Vercel não permite instalar o FFmpeg.
+Vale lembrar do que fica de fora ali: do vídeo sai só a fala transcrita, sem
+descrição da imagem, e áudio acima de 24 MB não é transcrito — porque a Vercel
+não permite instalar o FFmpeg.
 
 **Servidor próprio** — para ter tudo, inclusive vídeo. Note que **GitHub Pages
 não serve**: ele publica só páginas paradas, e aqui é preciso receber arquivo

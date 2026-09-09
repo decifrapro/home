@@ -398,13 +398,56 @@ async def test_sem_ffmpeg_audio_grande_demais_fica_avisado(tmp_path, monkeypatch
     assert "não divide arquivos grandes" in outcome.error
 
 
-async def test_sem_ffmpeg_video_fica_marcado_com_o_motivo(tmp_path, monkeypatch):
+async def test_sem_ffmpeg_o_video_ainda_entrega_o_que_foi_falado(tmp_path, monkeypatch):
+    """Sem FFmpeg não há descrição visual — mas a fala do vídeo não se perde."""
     monkeypatch.setattr("app.processors.video.ffmpeg_disponivel", lambda: False)
     context = make_context(tmp_path)
     event = make_event(tmp_path, "video.mp4", EventType.VIDEO, "video/mp4")
 
     outcome = await VideoProcessor().process(event, context)
 
+    assert outcome.metadata["transcript"] == "transcrição de teste"
+    assert outcome.text == "transcrição de teste"
+    assert outcome.cost_usd > 0
+    # A parte visual continua de fora, então o vídeo não conta como decifrado:
+    # a cobertura tem que continuar dizendo a verdade.
     assert outcome.status == ProcessingStatus.UNSUPPORTED
     assert "sem FFmpeg" in outcome.error
+
+
+async def test_sem_ffmpeg_video_em_formato_que_nao_da_para_ouvir(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.processors.video.ffmpeg_disponivel", lambda: False)
+    context = make_context(tmp_path)
+    origem = tmp_path / "extraido" / "video.avi"
+    origem.parent.mkdir(parents=True, exist_ok=True)
+    origem.write_bytes(b"RIFF" + b"\0" * 2048)
+    event = Event(
+        id="e", index=0, raw_timestamp="x", type=EventType.VIDEO,
+        attachment_name="video.avi", attachment_path="video.avi",
+        detected_mime="video/x-msvideo", processing_status=ProcessingStatus.PENDING,
+    )
+
+    outcome = await VideoProcessor().process(event, context)
+
+    assert outcome.status == ProcessingStatus.UNSUPPORTED
     assert outcome.cost_usd == 0
+    assert ".avi" in outcome.error
+
+
+async def test_video_sem_decifrar_mostra_o_que_foi_recuperado_no_export():
+    """O que já se sabe nunca some do histórico, mesmo com o item incompleto."""
+    from app.services.exporters import _media_body
+
+    evento = Event(
+        id="e", index=0, raw_timestamp="x", type=EventType.VIDEO,
+        attachment_name="video.mp4", attachment_path="video.mp4",
+        detected_mime="video/mp4", processing_status=ProcessingStatus.UNSUPPORTED,
+        processing_error="A parte visual não é analisada nesta instalação, sem FFmpeg.",
+        processed_text="bom dia, seu Rui",
+        metadata={"transcript": "bom dia, seu Rui"},
+    )
+
+    corpo = "\n".join(_media_body(evento))
+    assert "[MÍDIA NÃO PROCESSADA]" in corpo
+    assert "sem FFmpeg" in corpo
+    assert "bom dia, seu Rui" in corpo

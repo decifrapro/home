@@ -141,8 +141,8 @@ async def estimate_job(
         )
     if not ffmpeg_disponivel():
         estimate.notes.append(
-            "Esta instalação roda sem FFmpeg: vídeos não são analisados e áudios muito "
-            "grandes ficam de fora, então eles não entram na conta."
+            "Esta instalação roda sem FFmpeg: dos vídeos sai só a transcrição da fala, "
+            "sem descrição do que aparece na imagem, e áudios muito grandes ficam de fora."
         )
     if estimate.pdf_pages:
         estimate.notes.append(
