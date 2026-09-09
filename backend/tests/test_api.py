@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app import db
@@ -353,3 +355,11 @@ def test_diagnostico_lista_o_que_falta_preencher(monkeypatch):
         app_session_secret="segredo-longo",
     )
     assert completo.pendencias_de_configuracao() == []
+
+
+def test_config_publica_traz_a_versao(client):
+    """A versão fica à vista para se saber, olhando a tela, o que está no ar."""
+    from app.versao import VERSAO
+
+    assert re.fullmatch(r"\d{3,}", VERSAO), "a versão é um número de três dígitos ou mais"
+    assert client.get("/api/config").json()["versao"] == VERSAO

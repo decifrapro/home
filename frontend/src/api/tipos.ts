@@ -145,6 +145,7 @@ export interface Job {
 }
 
 export interface ConfiguracaoPublica {
+  versao: string
   appName: string
   appShortName: string
   appDescription: string

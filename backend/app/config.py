@@ -15,6 +15,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.versao import VERSAO
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -214,6 +216,7 @@ class Settings(BaseSettings):
     def public_config(self) -> dict:
         """Configuração que o frontend pode conhecer. Nunca inclui segredo."""
         return {
+            "versao": VERSAO,
             "appName": self.app_name,
             "appShortName": self.app_short_name,
             "appDescription": self.app_description,

@@ -45,6 +45,13 @@ export function App() {
     escreverJobNaUrl(jobId)
   }, [jobId])
 
+  /** Volta à tela inicial sem apagar nada: o atendimento continua na lista. */
+  const voltarAoInicio = useCallback(() => {
+    setJobId(null)
+    setVerConversa(false)
+    window.scrollTo({ top: 0 })
+  }, [])
+
   if (!configuracao) {
     return (
       <div className="pagina">
@@ -63,22 +70,29 @@ export function App() {
   return (
     <>
       <header className="cabecalho">
-        <div className="cabecalho__marca">
+        {/* A logo é o caminho de volta: de qualquer tela, um clique volta ao
+            início, onde ficam o envio de um novo ZIP e os atendimentos anteriores. */}
+        <button
+          type="button"
+          className="cabecalho__marca"
+          onClick={voltarAoInicio}
+          aria-label={`${configuracao.appName} — voltar ao início`}
+        >
           <img src="/icon.svg" alt="" width={28} height={28} />
           <span>{configuracao.appName}</span>
-        </div>
+          <span className="cabecalho__versao" title="Versão publicada">
+            v{configuracao.versao}
+          </span>
+        </button>
         <div className="cabecalho__acoes">
           <BotaoDeTema tema={tema} aoAlternar={alternar} />
           {jobId && (
             <button
               type="button"
               className="botao botao--secundario botao--pequeno"
-              onClick={() => {
-                setJobId(null)
-                setVerConversa(false)
-              }}
+              onClick={voltarAoInicio}
             >
-              Nova conversa
+              Nova análise
             </button>
           )}
         </div>
@@ -123,10 +137,7 @@ export function App() {
         <TelaTimeline
           job={job}
           aoAtualizar={atualizar}
-          aoApagar={() => {
-            setJobId(null)
-            setVerConversa(false)
-          }}
+          aoApagar={voltarAoInicio}
         />
       )}
 

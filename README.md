@@ -16,6 +16,17 @@ O resultado serve para ler e para colar em outra IA: sai em TXT, Markdown e JSON
 
 ---
 
+## Versão
+
+O número aparece ao lado da logo (`v003`) e em `GET /api/config`, no campo
+`versao`. Serve para saber, olhando a tela, se o que está publicado já contém
+determinado ajuste.
+
+**Regra:** todo ajuste publicado sobe o número em um. A fonte única é
+`backend/app/versao.py`; nenhum outro lugar guarda cópia.
+
+---
+
 ## Índice
 
 - [Dois jeitos de rodar](#dois-jeitos-de-rodar)

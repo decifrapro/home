@@ -119,12 +119,41 @@ a {
   gap: 10px;
   font-weight: var(--peso-titulo);
   white-space: nowrap;
+  /* É um botão, mas tem que continuar parecendo a marca. */
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: 1rem;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cabecalho__marca:hover span:first-of-type {
+  text-decoration: underline;
+}
+
+.cabecalho__marca:focus-visible {
+  outline: 2px solid var(--roxo);
+  outline-offset: 3px;
+  border-radius: var(--raio-pequeno);
 }
 
 .cabecalho__marca img {
   width: 28px;
   height: 28px;
   border-radius: 7px;
+}
+
+.cabecalho__versao {
+  font-size: 0.75rem;
+  font-weight: var(--peso-titulo);
+  letter-spacing: 0.03em;
+  color: var(--texto-fraco);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  padding: 1px 7px;
 }
 
 .cabecalho__acoes {
