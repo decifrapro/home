@@ -118,37 +118,20 @@ class Settings(BaseSettings):
     # Diretório do frontend compilado (servido pelo backend em produção)
     frontend_dist: Path = Field(default=Path("/app/frontend"))
 
-    @classmethod
-    def _campo_de(cls, chave: str) -> object | None:
-        """Acha o campo pelo nome ou por qualquer um dos seus apelidos."""
-        procurado = str(chave).lower()
-        for nome, campo in cls.model_fields.items():
-            if nome.lower() == procurado:
-                return campo
-            apelido = getattr(campo, "validation_alias", None)
-            escolhas = getattr(apelido, "choices", [apelido] if apelido else [])
-            if any(str(item).lower() == procurado for item in escolhas if item):
-                return campo
-        return None
-
     @model_validator(mode="before")
     @classmethod
     def _ignorar_vazios(cls, valores: object) -> object:
-        """Variável de ambiente vazia vale como "não preenchida".
+        """Variável de ambiente vazia vale como "não preenchida", sempre.
 
-        Hospedagens injetam variáveis próprias, às vezes vazias. Antes, uma
-        dessas caindo num campo de número derrubava o servidor inteiro na
-        subida — e o erro só aparecia como "função falhou".
+        Vale para qualquer campo, inclusive os de texto: cadastrar o nome da
+        variável sem valor é o mesmo que não cadastrar. Uma variável vazia já
+        derrubou o sistema duas vezes — uma num campo de número e outra no nome
+        do aplicativo, que virou título vazio e o servidor recusou subir. Quem
+        precisa mesmo de valor é conferido depois, em `pendencias_de_configuracao`.
         """
         if not isinstance(valores, dict):
             return valores
-        limpos = {}
-        for chave, valor in valores.items():
-            campo = cls._campo_de(chave)
-            if valor == "" and campo is not None and getattr(campo, "annotation", str) is not str:
-                continue  # deixa o padrão valer
-            limpos[chave] = valor
-        return limpos
+        return {chave: valor for chave, valor in valores.items() if valor != ""}
 
     @field_validator("data_dir", "frontend_dist", mode="before")
     @classmethod
@@ -191,6 +174,30 @@ class Settings(BaseSettings):
     def ai_enabled(self) -> bool:
         """Há provedor de IA utilizável? Sem isso o sistema roda só como motor."""
         return bool(self.openai_api_key) and self.ai_provider != "none"
+
+    def pendencias_de_configuracao(self) -> list[str]:
+        """O que ainda falta preencher para o sistema fazer o trabalho todo."""
+        faltando = []
+        if not self.supabase_url or not self.supabase_service_key:
+            faltando.append(
+                "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY: sem elas não há onde guardar "
+                "as conversas nem os arquivos."
+            )
+        if not self.openai_api_key:
+            faltando.append(
+                "OPENAI_API_KEY: sem ela a conversa é montada, mas áudios, imagens e PDFs "
+                "ficam sem ser decifrados."
+            )
+        if not self.app_access_password:
+            faltando.append(
+                "APP_ACCESS_PASSWORD: sem senha, qualquer pessoa com o endereço entra."
+            )
+        if not self.app_session_secret:
+            faltando.append(
+                "APP_SESSION_SECRET: precisa de um texto longo e aleatório para a senha "
+                "de acesso e o atalho do iPhone funcionarem."
+            )
+        return faltando
 
     def public_config(self) -> dict:
         """Configuração que o frontend pode conhecer. Nunca inclui segredo."""

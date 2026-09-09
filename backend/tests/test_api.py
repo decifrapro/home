@@ -307,3 +307,49 @@ def test_pagina_de_socorro_nao_mostra_segredo(monkeypatch):
 
     assert "sk-segredo-que-nao-pode-vazar" not in texto
     assert "[OPENAI_API_KEY oculta]" in texto
+
+
+def test_sistema_sobe_com_todas_as_variaveis_vazias(monkeypatch):
+    """Cadastrar os nomes das variáveis sem valor não pode derrubar nada.
+
+    Foi exatamente o que aconteceu na primeira publicação: todas as variáveis
+    existiam, todas vazias. O nome do aplicativo virou texto em branco e o
+    servidor recusou subir, sem dizer por quê.
+    """
+    import os
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    exemplo = Path(__file__).resolve().parents[2] / ".env.example"
+    for linha in exemplo.read_text(encoding="utf-8").splitlines():
+        if "=" in linha and not linha.strip().startswith("#"):
+            monkeypatch.setitem(os.environ, linha.split("=", 1)[0].strip(), "")
+
+    from app.config import Settings
+
+    config = Settings()
+    assert config.app_name == "Decifra Pro"  # o padrão prevalece
+    assert config.max_zip_mb == 500
+    assert config.storage_mode == "local"
+
+    from app.main import app
+
+    with TestClient(app) as cliente:
+        assert cliente.get("/api/health").status_code == 200
+        diagnostico = cliente.get("/api/diag").json()
+        assert "SUPABASE_URL" in " ".join(diagnostico["faltaConfigurar"])
+        assert "OPENAI_API_KEY" in " ".join(diagnostico["faltaConfigurar"])
+
+
+def test_diagnostico_lista_o_que_falta_preencher(monkeypatch):
+    from app.config import Settings
+
+    completo = Settings(
+        supabase_url="https://x.supabase.co",
+        supabase_service_key="sb_secret_x",
+        openai_api_key="sk-x",
+        app_access_password="senha",
+        app_session_secret="segredo-longo",
+    )
+    assert completo.pendencias_de_configuracao() == []

@@ -53,8 +53,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.app_name,
-    description=settings.app_description,
+    # Um título vazio faz o FastAPI recusar subir. O nome vem da configuração,
+    # mas nunca pode ficar em branco por causa de uma variável mal preenchida.
+    title=settings.app_name or "Decifra Pro",
+    description=settings.app_description or "Leitor multimodal de conversas do WhatsApp",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -84,6 +86,7 @@ def diagnostico() -> dict:
         "segredoDeSessao": bool(settings.app_session_secret),
         "ffmpeg": settings.storage_mode != "supabase",
         "frontendCompilado": (settings.frontend_dist / "index.html").exists(),
+        "faltaConfigurar": settings.pendencias_de_configuracao(),
     }
     try:
         db.connect()
