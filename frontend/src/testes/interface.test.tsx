@@ -299,3 +299,17 @@ describe('conversas enviadas (celular e computador)', () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
 })
+
+describe('Progresso', () => {
+  it('mostra a porcentagem e avisa quando o avanço para', async () => {
+    const { Progresso } = await import('../componentes/Progresso')
+    const job = {
+      coverage: { percent: 40, overallDone: 2, overallTotal: 5, complete: false, categories: {} },
+    } as never
+
+    render(<Progresso job={job} />)
+    expect(screen.getByText(/40%/)).toBeInTheDocument()
+    expect(screen.getByText(/2 de 5 itens decifrados/)).toBeInTheDocument()
+    expect(screen.getByText(/Trabalhando/)).toBeInTheDocument()
+  })
+})

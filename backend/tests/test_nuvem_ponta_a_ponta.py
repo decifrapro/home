@@ -250,3 +250,40 @@ async def test_cron_protegido_por_segredo(nuvem, client, monkeypatch):
     assert client.get("/api/cron/tick").status_code == 401
     assert client.get("/api/cron/tick", headers={"Authorization": "Bearer segredo"}).status_code == 200
     assert client.get("/api/cron/tick", headers={"x-vercel-cron": "1"}).status_code == 200
+
+
+async def test_item_que_nunca_cabe_no_tempo_vira_falha_declarada(nuvem, client, monkeypatch):
+    """Tentar para sempre deixaria a tela girando sem fim. Melhor dizer que não deu."""
+    import asyncio
+
+    from app.jobs.worker import MAX_TENTATIVAS_POR_TEMPO
+    from app.models.schemas import EventType
+    from app.processors import registry
+
+    cliente, _provedor, make_zip = nuvem
+    job_id = _subir(cliente, client, make_zip(CHAT, ARQUIVOS))
+    client.post(f"/api/jobs/{job_id}/upload/registrado")
+    client.post(f"/api/jobs/{job_id}/confirm")
+
+    # Um áudio que nunca termina dentro da janela da hospedagem.
+    original = registry.processor_for
+
+    class NuncaTermina:
+        category = "audio"
+
+        async def process(self, evento, contexto):
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(
+        "app.jobs.worker.processor_for",
+        lambda tipo: NuncaTermina() if tipo is EventType.AUDIO else original(tipo),
+    )
+    monkeypatch.setattr("app.config.settings.tick_hard_limit_seconds", 11)
+
+    for _ in range(MAX_TENTATIVAS_POR_TEMPO + 2):
+        client.post(f"/api/jobs/{job_id}/tick")
+
+    audio = next(e for e in db.get_events(job_id) if e.type is EventType.AUDIO)
+    assert audio.processing_status == ProcessingStatus.FAILED
+    assert "tentativas" in (audio.processing_error or "")
+    assert db.get_job(job_id).status in {JobStatus.PARTIAL, JobStatus.COMPLETED}

@@ -501,3 +501,37 @@ details summary {
   .cabecalho { padding: 10px 12px; }
   h1 { font-size: 1.3rem; }
 }
+
+/* Sinal de vida do processamento: giro + porcentagem que avança. */
+.progresso {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.progresso__texto p {
+  margin: 0;
+}
+
+.progresso__giro {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--borda);
+  border-top-color: var(--roxo);
+  animation: girar 0.9s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progresso__giro {
+    animation-duration: 3s;
+  }
+}

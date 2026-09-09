@@ -4,7 +4,7 @@
 
 Toda alteração publicada **sobe o número da versão em um**.
 
-- Fonte única: `backend/app/versao.py` (`VERSAO = "005"`). Nenhum outro arquivo
+- Fonte única: `backend/app/versao.py` (`VERSAO = "006"`). Nenhum outro arquivo
   guarda cópia do número.
 - Aparece ao lado da logo no cabeçalho e em `GET /api/config` (campo `versao`).
 - É assim que se confere, olhando a tela, se o que está no ar já contém o

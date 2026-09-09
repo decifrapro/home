@@ -51,6 +51,12 @@ class Task:
     event_id: str | None = None
 
 
+# Quantas vezes um item pode estourar o tempo antes de ser dado como falho. Sem
+# esse limite, um arquivo que não cabe na janela da hospedagem seria tentado
+# eternamente e a tela ficaria "processando" para sempre.
+MAX_TENTATIVAS_POR_TEMPO = 3
+
+
 class JobRunner:
     """Fila simples de trabalho, um job por vez, com paralelismo interno por tipo."""
 
@@ -386,8 +392,15 @@ class JobRunner:
         processados = 0
         budget_hit = False
 
+        # Quanto um item pode demorar. Não é o orçamento do bloco (esse diz até
+        # quando vale começar trabalho novo): é o que ainda cabe antes de a
+        # resposta precisar sair. Amarrar os dois fazia um item um pouco mais
+        # lento que o bloco nunca terminar em tentativa nenhuma.
+        teto_do_item = max(10.0, settings.tick_hard_limit_seconds - 8)
+
         def tempo_restante() -> float:
-            return max(5.0, limite_tempo - (time.monotonic() - comeco))
+            gasto = time.monotonic() - comeco
+            return max(10.0, min(teto_do_item, settings.tick_hard_limit_seconds - 8 - gasto))
 
         async def tratar_evento(evento: Event) -> None:
             nonlocal processados, budget_hit
@@ -405,14 +418,34 @@ class JobRunner:
                         processador.process(evento, context), timeout=tempo_restante()
                     )
                 except TimeoutError:
-                    # Volta para a fila: a próxima rodada tenta de novo com o tempo
-                    # inteiro, em vez de a função ser cortada no meio sem registro.
-                    logger.warning("job=%s event=%s estourou o tempo do bloco", job_id, evento.index)
-                    db.update_event(
-                        job_id, evento.id,
-                        processing_status=ProcessingStatus.PENDING,
-                        processing_error="Demorou mais que o tempo do bloco; será tentado de novo.",
+                    tentativas = int(evento.metadata.get("tentativasPorTempo", 0)) + 1
+                    logger.warning(
+                        "job=%s event=%s estourou o tempo (tentativa %d)",
+                        job_id, evento.index, tentativas,
                     )
+                    dados = {**evento.metadata, "tentativasPorTempo": tentativas}
+                    if tentativas >= MAX_TENTATIVAS_POR_TEMPO:
+                        # Tentar para sempre deixaria a tela girando sem fim e sem
+                        # explicação. Melhor dizer que não deu, com o motivo.
+                        db.update_event(
+                            job_id, evento.id,
+                            processing_status=ProcessingStatus.FAILED,
+                            processing_error=(
+                                f"Não deu tempo de decifrar em {tentativas} tentativas. "
+                                "O arquivo continua na conversa, na posição certa."
+                            ),
+                            metadata=dados,
+                        )
+                    else:
+                        db.update_event(
+                            job_id, evento.id,
+                            processing_status=ProcessingStatus.PENDING,
+                            processing_error=(
+                                f"Demorou demais (tentativa {tentativas} de "
+                                f"{MAX_TENTATIVAS_POR_TEMPO}); será tentado de novo."
+                            ),
+                            metadata=dados,
+                        )
                     return
                 except BudgetExceeded as exc:
                     budget_hit = True

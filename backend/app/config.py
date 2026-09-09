@@ -162,7 +162,7 @@ class Settings(BaseSettings):
         """
         if not self.serverless:
             return self.openai_timeout_seconds
-        return max(10, min(self.openai_timeout_seconds, self.tick_budget_seconds))
+        return max(10, min(self.openai_timeout_seconds, self.tick_hard_limit_seconds - 10))
 
     @property
     def serverless(self) -> bool:

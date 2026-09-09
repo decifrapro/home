@@ -1,6 +1,7 @@
 import type { Job } from '../api/tipos'
 import { Cobertura } from './Cobertura'
 import { NOME_POR_CATEGORIA, NOME_POR_STATUS_DO_JOB, formatarDinheiro } from './comum'
+import { Progresso } from './Progresso'
 
 interface Props {
   job: Job
@@ -23,12 +24,7 @@ export function TelaProcessando({ job, aoConfirmar, aoCancelar, aoVerConversa, o
           {job.originalFilename} · {job.eventCount} eventos
         </p>
 
-        {emAndamento && (
-          <p aria-live="polite">
-            O processamento roda no servidor. Você pode bloquear a tela, trocar de aplicativo ou
-            fechar esta aba — quando voltar, o progresso continua aqui.
-          </p>
-        )}
+        {emAndamento && <Progresso job={job} />}
 
         {job.error && (
           <p className="aviso aviso--erro" role="alert">
