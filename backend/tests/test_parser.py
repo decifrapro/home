@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from app.parsers.whatsapp import extract_urls, infer_date_order, parse_chat
+from app.parsers.whatsapp import (
+    MIN_EVENTOS_PARA_SUSPEITAR_DE_CORTE,
+    extract_urls,
+    infer_date_order,
+    parse_chat,
+)
 
 
 def test_formato_android_portugues():
@@ -138,10 +143,33 @@ def test_caracteres_invisiveis_nao_quebram_o_cabecalho():
     assert parse_chat(chat).events[0].sender == "Sanchai"
 
 
-def test_exportacao_truncada_registra_aviso():
-    result = parse_chat("25/08/2026 10:45 - Sanchai: começo cortado\n")
+def test_conversa_curta_nunca_e_acusada_de_corte():
+    """O WhatsApp não corta conversas pequenas: acusar corte aqui é alarme falso."""
+    linhas = "".join(
+        f"25/08/2026 10:{minuto:02d} - Sanchai: mensagem {minuto}\n" for minuto in range(20)
+    )
+    result = parse_chat(linhas)
+    assert result.looks_truncated is False
+    assert not any(w["code"] == "truncated_export" for w in result.warnings)
+
+
+def test_exportacao_longa_sem_inicio_registra_aviso():
+    linhas = "".join(
+        f"25/08/2026 10:45 - Sanchai: mensagem {i}\n"
+        for i in range(MIN_EVENTOS_PARA_SUSPEITAR_DE_CORTE + 10)
+    )
+    result = parse_chat(linhas)
     assert result.looks_truncated is True
     assert any(w["code"] == "truncated_export" for w in result.warnings)
+
+
+def test_exportacao_longa_com_aviso_de_criptografia_nao_acusa_corte():
+    linhas = "25/08/2026 10:00 - As mensagens são criptografadas de ponta a ponta.\n"
+    linhas += "".join(
+        f"25/08/2026 10:45 - Sanchai: mensagem {i}\n"
+        for i in range(MIN_EVENTOS_PARA_SUSPEITAR_DE_CORTE + 10)
+    )
+    assert parse_chat(linhas).looks_truncated is False
 
 
 def test_ordem_de_data_ambigua_assume_dia_primeiro():

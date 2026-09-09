@@ -481,10 +481,39 @@ def parse_chat(content: str) -> ParseResult:
     )
 
 
+# O WhatsApp só corta a exportação em conversas muito longas. Abaixo deste número
+# de eventos um começo "sem aviso de criptografia" é apenas uma conversa que
+# começou assim — não um corte —, então não levantamos suspeita.
+MIN_EVENTOS_PARA_SUSPEITAR_DE_CORTE = 2000
+
+# Marcas de que o arquivo começa no início real da conversa.
+MARCAS_DE_INICIO = (
+    "criptograf",
+    "encrypted",
+    "cifrad",
+    "verschlüsselt",
+    "criou o grupo",
+    "criou este grupo",
+    "created group",
+    "created this group",
+    "adicionou você",
+    "added you",
+    "entrou no grupo",
+    "joined using",
+    "seu código de segurança",
+    "security code",
+)
+
+
 def _looks_truncated(content: str, events: list[ParsedEvent]) -> bool:
-    """Heurística conservadora: exportação cortada não começa com o aviso de criptografia."""
-    if not events:
+    """Heurística conservadora: só suspeita de corte em exportações muito longas.
+
+    Duas condições precisam valer ao mesmo tempo: a conversa é longa o bastante
+    para o WhatsApp cortá-la e o arquivo não começa com nenhuma marca de início
+    real de conversa. Em conversas curtas nunca acusamos corte, porque o corte
+    simplesmente não acontece nesse tamanho.
+    """
+    if len(events) < MIN_EVENTOS_PARA_SUSPEITAR_DE_CORTE:
         return False
-    first_lines = strip_invisible(content).lstrip().lower()[:400]
-    marks = ("criptograf", "encrypted", "cifrad", "verschlüsselt")
-    return not any(mark in first_lines for mark in marks)
+    inicio = strip_invisible(content).lstrip().lower()[:400]
+    return not any(marca in inicio for marca in MARCAS_DE_INICIO)
