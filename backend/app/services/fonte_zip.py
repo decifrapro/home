@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import zipfile
 from pathlib import Path
 from typing import Protocol
@@ -70,8 +71,17 @@ class FonteSupabase:
         self._caminho = caminho_zip
         self._settings = settings
         self._zip: zipfile.ZipFile | None = None
+        # As leituras simultâneas do ZIP em si são seguras (o zipfile do Python
+        # já protege a posição de leitura). O que precisa de trava é só a
+        # abertura: sem ela, duas buscas ao mesmo tempo montariam dois leitores
+        # e o índice do ZIP seria baixado duas vezes à toa.
+        self._trava = threading.RLock()
 
     def _abrir(self) -> zipfile.ZipFile:
+        with self._trava:
+            return self._abrir_sem_trava()
+
+    def _abrir_sem_trava(self) -> zipfile.ZipFile:
         if self._zip is None:
             tamanho = self._cliente.file_size(self._caminho)
             self._zip = abrir_zip_por_faixa(
@@ -159,9 +169,10 @@ class FonteSupabase:
         return destino
 
     def fechar(self) -> None:
-        if self._zip is not None:
-            self._zip.close()
-            self._zip = None
+        with self._trava:
+            if self._zip is not None:
+                self._zip.close()
+                self._zip = None
 
 
 def _texto_ou_binario(cabecalho: bytes) -> str | None:

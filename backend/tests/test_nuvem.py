@@ -221,3 +221,59 @@ def test_cliente_supabase_exige_configuracao():
 
     with pytest.raises(SupabaseError):
         SupabaseClient(settings.model_copy(update={"supabase_url": "", "supabase_service_key": ""}))
+
+
+def test_buscar_midias_ao_mesmo_tempo_nao_embaralha_os_bytes(tmp_path, make_zip):
+    """As mídias do bloco são buscadas ao mesmo tempo: cada uma sai inteira.
+
+    Guarda de regressão para o dia em que alguém trocar o leitor do ZIP remoto
+    por outro que não proteja a posição de leitura.
+    """
+    import threading
+    import time
+
+    from app.config import settings
+    from app.services.fonte_zip import FonteSupabase
+    from tests.conftest import MEDIA
+    from tests.fake_supabase import FakeSupabaseClient
+
+    arquivos = {
+        "audio.opus": MEDIA / "audio.opus",
+        "imagem.jpg": MEDIA / "imagem.jpg",
+        "documento.pdf": MEDIA / "documento.pdf",
+        "video.mp4": MEDIA / "video.mp4",
+    }
+    zip_path = make_zip("25/08/2026 10:45 - Rui: oi\n", arquivos)
+    cliente = FakeSupabaseClient()
+    cliente.upload("job/conversa.zip", zip_path.read_bytes(), "application/zip")
+
+    # A rede de verdade demora; sem essa espera as threads mal se cruzam e o
+    # teste passaria mesmo com o leitor desprotegido.
+    original = cliente.download_range
+
+    def devagar(caminho, inicio, fim):
+        time.sleep(0.005)
+        return original(caminho, inicio, fim)
+
+    cliente.download_range = devagar
+    fonte = FonteSupabase(cliente, "job/conversa.zip", settings)
+
+    esperado = {nome: origem.read_bytes() for nome, origem in arquivos.items()}
+    obtidos: dict[str, bytes] = {}
+    falhas: list[Exception] = []
+
+    def buscar(nome: str) -> None:
+        try:
+            destino = fonte.obter(nome, tmp_path / f"paralelo-{nome}")
+            obtidos[nome] = destino.read_bytes()
+        except Exception as exc:  # noqa: BLE001 — o teste precisa ver a falha
+            falhas.append(exc)
+
+    linhas = [threading.Thread(target=buscar, args=(nome,)) for nome in arquivos]
+    for linha in linhas:
+        linha.start()
+    for linha in linhas:
+        linha.join()
+
+    assert not falhas, falhas
+    assert obtidos == esperado, "cada mídia tem que sair inteira e igual à original"
