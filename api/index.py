@@ -1,12 +1,14 @@
 """Porta de entrada do Decifra Pro na Vercel.
 
-A Vercel executa este arquivo como função. Ele aponta para a aplicação que já
-existe em `backend/app` — nenhuma lógica de negócio mora aqui.
+A Vercel executa este arquivo como função e procura, **no nível de cima do
+arquivo**, uma variável chamada `app`. Ela precisa estar aqui de forma simples e
+visível: se a definição ficar escondida dentro de um `try`, a plataforma não a
+encontra e recusa a publicação inteira.
 
-Se a aplicação não conseguir nem ser carregada, este arquivo sobe no lugar dela
-uma página de socorro que explica o que aconteceu. Sem isso, qualquer erro na
-subida vira só "esta função falhou", sem dizer o motivo, e não há como
-descobrir nada pelo navegador.
+Por isso o carregamento acontece dentro de uma função e o resultado é atribuído
+a `app` numa linha só. Se a aplicação de verdade não puder ser carregada, entra
+no lugar dela uma página de socorro que conta o motivo — sem isso, qualquer erro
+na subida vira só "esta função falhou", sem dizer nada.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ if str(BACKEND) not in sys.path:
 SEGREDOS = (
     "OPENAI_API_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SERVICE_KEY",
     "APP_ACCESS_PASSWORD",
     "APP_SESSION_SECRET",
     "CRON_SECRET",
@@ -41,41 +44,38 @@ def _redigir(texto: str) -> str:
     return texto
 
 
-def _inventario_do_ambiente() -> dict:
-    """Nomes das variáveis configuradas e se alguma chegou vazia — nunca os valores."""
-    interessantes = {
+def _variaveis_configuradas() -> dict:
+    """Nomes das variáveis e se alguma chegou vazia — nunca os valores."""
+    return {
         nome: ("vazia" if valor == "" else f"{len(valor)} caracteres")
         for nome, valor in sorted(os.environ.items())
-        if not nome.startswith(("AWS_", "LAMBDA_", "_", "npm_"))
+        if not nome.startswith(("AWS_", "LAMBDA_", "_", "npm_", "VERCEL_OIDC"))
     }
-    return interessantes
 
 
-try:
-    from app.main import app  # noqa: E402  (o caminho precisa ser ajustado antes)
-except Exception:  # a aplicação nem carregou
-    _ERRO = _redigir(traceback.format_exc())
+class PaginaDeSocorro:
+    """Aplicação mínima que só existe para contar por que a de verdade não subiu."""
 
-    async def app(scope, receive, send):  # type: ignore[misc]
-        """Página de socorro: conta o que impediu o sistema de subir."""
+    def __init__(self, erro: str) -> None:
+        self.erro = erro
+
+    async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
             return
-
         corpo = json.dumps(
             {
                 "erro": "O sistema não conseguiu iniciar.",
-                "detalhe": _ERRO.splitlines()[-1] if _ERRO else "",
-                "tracebackCompleto": _ERRO,
-                "variaveisConfiguradas": _inventario_do_ambiente(),
+                "resumo": self.erro.strip().splitlines()[-1] if self.erro.strip() else "",
+                "detalhe": self.erro,
+                "variaveisConfiguradas": _variaveis_configuradas(),
                 "oQueFazer": (
-                    "Copie esta tela inteira e mande para quem cuida do sistema. "
+                    "Mande esta tela inteira para quem cuida do sistema. "
                     "Nenhuma senha ou chave aparece aqui."
                 ),
             },
             ensure_ascii=False,
             indent=2,
         ).encode("utf-8")
-
         await send(
             {
                 "type": "http.response.start",
@@ -89,4 +89,13 @@ except Exception:  # a aplicação nem carregou
         await send({"type": "http.response.body", "body": corpo})
 
 
-__all__ = ["app"]
+def _carregar_aplicacao():
+    try:
+        from app.main import app as aplicacao
+
+        return aplicacao
+    except Exception:
+        return PaginaDeSocorro(_redigir(traceback.format_exc()))
+
+
+app = _carregar_aplicacao()

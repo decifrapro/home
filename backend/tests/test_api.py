@@ -237,3 +237,73 @@ def test_chave_do_supabase_aceita_os_dois_nomes(monkeypatch):
     monkeypatch.delitem(os.environ, "SUPABASE_SERVICE_ROLE_KEY")
     monkeypatch.setitem(os.environ, "SUPABASE_SERVICE_KEY", "outro")
     assert Settings().supabase_service_key == "outro"
+
+
+def test_entrada_da_vercel_define_app_no_nivel_de_cima():
+    """A plataforma procura `app` no nível de cima do arquivo.
+
+    Este teste existe porque esconder essa definição dentro de um `try` fez a
+    Vercel recusar o build inteiro — e o sintoma que aparecia era o site
+    continuar servindo a versão antiga, sem nenhum aviso.
+    """
+    import ast
+    from pathlib import Path
+
+    entrada = Path(__file__).resolve().parents[2] / "api" / "index.py"
+    arvore = ast.parse(entrada.read_text(encoding="utf-8"))
+
+    nomes_no_topo = {
+        alvo.id
+        for no in arvore.body
+        if isinstance(no, ast.Assign)
+        for alvo in no.targets
+        if isinstance(alvo, ast.Name)
+    }
+    assert "app" in nomes_no_topo, "api/index.py precisa ter uma linha 'app = ...' no topo"
+
+
+def test_entrada_da_vercel_sobe_pagina_de_socorro_quando_a_aplicacao_falha(monkeypatch):
+    """Se a aplicação não carregar, a função ainda responde contando o motivo."""
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    if str(raiz) not in sys.path:
+        sys.path.insert(0, str(raiz))
+
+    import api.index as entrada
+
+    socorro = entrada.PaginaDeSocorro("Traceback...\nModuleNotFoundError: falta alguma coisa")
+    enviados = []
+
+    async def send(mensagem):
+        enviados.append(mensagem)
+
+    async def receive():
+        return {"type": "http.request"}
+
+    import asyncio
+
+    asyncio.run(socorro({"type": "http"}, receive, send))
+
+    assert enviados[0]["status"] == 500
+    corpo = enviados[1]["body"].decode("utf-8")
+    assert "não conseguiu iniciar" in corpo
+    assert "ModuleNotFoundError" in corpo
+
+
+def test_pagina_de_socorro_nao_mostra_segredo(monkeypatch):
+    import os
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    if str(raiz) not in sys.path:
+        sys.path.insert(0, str(raiz))
+    import api.index as entrada
+
+    monkeypatch.setitem(os.environ, "OPENAI_API_KEY", "sk-segredo-que-nao-pode-vazar")
+    texto = entrada._redigir("erro com a chave sk-segredo-que-nao-pode-vazar dentro")
+
+    assert "sk-segredo-que-nao-pode-vazar" not in texto
+    assert "[OPENAI_API_KEY oculta]" in texto
