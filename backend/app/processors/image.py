@@ -20,7 +20,7 @@ class ImageProcessor(MediaProcessor):
     handles = (EventType.IMAGE,)
 
     async def process(self, event: Event, context: ProcessingContext) -> ProcessingOutcome:
-        path = context.media_path(event)
+        path = await context.midia(event)
         if path is None:
             return ProcessingOutcome(
                 status=ProcessingStatus.UNRESOLVED,

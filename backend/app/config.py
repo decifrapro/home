@@ -60,7 +60,10 @@ class Settings(BaseSettings):
     supabase_timeout_seconds: int = 60
 
     # Processamento em blocos curtos, para caber no tempo da função da Vercel.
-    tick_budget_seconds: int = 45
+    # A função da Vercel é morta aos 60 s. O bloco mira 30 s de trabalho e a
+    # resposta sai, no pior caso, aos 50 — nunca sem resposta.
+    tick_budget_seconds: int = 30
+    tick_hard_limit_seconds: int = 50
     tick_max_items: int = 8
     cron_secret: str = ""
 

@@ -7,6 +7,7 @@ pode ser reprocessado sozinho.
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -62,6 +63,16 @@ class ProcessingContext:
             return self.obter_midia(event)
         path = self.extract_root / event.attachment_path
         return path if path.exists() else None
+
+    async def midia(self, event: Event) -> Path | None:
+        """O arquivo da mídia, buscado fora da linha principal.
+
+        No modo Vercel isto baixa faixas de bytes do Supabase — trabalho de rede
+        bloqueante. Feito na linha principal, ele congelava todo o resto do bloco
+        (nenhum outro item avançava e o tempo limite nem chegava a ser checado).
+        Numa thread, os itens do bloco realmente andam ao mesmo tempo.
+        """
+        return await asyncio.to_thread(self.media_path, event)
 
     def scratch(self, event: Event, name: str) -> Path:
         target = self.work_root / event.id / name

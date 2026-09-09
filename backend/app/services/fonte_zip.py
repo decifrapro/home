@@ -24,7 +24,9 @@ from app.services.zip_service import ExtractionResult, ZipRejected, extract_zip,
 
 logger = logging.getLogger(__name__)
 
-BLOCO_CATALOGO = 64 * 1024
+# Cada faixa é uma ida à rede. Blocos pequenos multiplicavam essas idas por
+# arquivo; 256 KB cobre a maioria das mídias do WhatsApp em uma ou duas.
+BLOCO_CATALOGO = 256 * 1024
 BYTES_DE_ASSINATURA = 4096
 
 

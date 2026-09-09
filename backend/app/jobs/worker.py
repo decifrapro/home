@@ -294,7 +294,20 @@ class JobRunner:
         saber o motivo — que é justamente o que este sistema não pode fazer.
         """
         try:
-            resultado = await self._tick(job, budget_seconds=budget_seconds, max_items=max_items)
+            resultado = await asyncio.wait_for(
+                self._tick(job, budget_seconds=budget_seconds, max_items=max_items),
+                timeout=settings.tick_hard_limit_seconds,
+            )
+        except TimeoutError:
+            # Melhor responder "ainda falta tanto" do que ser morto pela
+            # hospedagem sem resposta nenhuma: assim a próxima rodada continua.
+            logger.warning("job=%s bloco encerrado no limite duro", job.id)
+            return {
+                "jobId": job.id,
+                "status": JobStatus.PROCESSING.value,
+                "processados": 0,
+                "restantes": self._restantes(job.id),
+            }
         except Exception as exc:  # noqa: BLE001 — a falha precisa chegar na tela
             logger.exception("job=%s falha no bloco de processamento", job.id)
             motivo = _sanitize(str(exc)) or exc.__class__.__name__
@@ -474,12 +487,20 @@ class JobRunner:
         }
 
     def _restantes(self, job_id: str) -> int:
+        """O que ainda falta — incluindo o que está reservado por outra execução.
+
+        Contar só o que está "pendente" fazia o atendimento ser dado por
+        encerrado enquanto um item ainda estava reservado, e esse item nunca
+        mais era retomado: ficava para sempre sem decifrar num histórico que se
+        dizia terminado.
+        """
+        esperando = {ProcessingStatus.PENDING, ProcessingStatus.PROCESSING}
         eventos = db.get_events(job_id, with_links=False)
         links = db.get_links(job_id)
         return sum(
             1 for evento in eventos
-            if evento.type.is_media and evento.processing_status == ProcessingStatus.PENDING
-        ) + sum(1 for link in links if link.status == ProcessingStatus.PENDING)
+            if evento.type.is_media and evento.processing_status in esperando
+        ) + sum(1 for link in links if link.status in esperando)
 
     async def _encerrar(self, job: Job, *, budget_hit: bool) -> dict:
         """Fecha o atendimento: cobertura final e status honesto."""

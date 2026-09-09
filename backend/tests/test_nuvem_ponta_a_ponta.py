@@ -188,6 +188,29 @@ async def test_item_preso_por_execucao_interrompida_volta_para_a_fila(nuvem, cli
     assert audio.processing_status == ProcessingStatus.DONE
 
 
+async def test_atendimento_nao_se_diz_pronto_com_item_reservado(nuvem, client):
+    """Item reservado por outra execução ainda é trabalho: o bloco não encerra."""
+    from datetime import UTC, datetime, timedelta
+
+    cliente, _provedor, make_zip = nuvem
+    job_id = _subir(cliente, client, make_zip(CHAT, ARQUIVOS))
+    client.post(f"/api/jobs/{job_id}/upload/registrado")
+    client.post(f"/api/jobs/{job_id}/confirm")
+
+    # Alguém está com a imagem na mão, reserva ainda válida.
+    imagem = next(e for e in db.get_events(job_id) if e.type.value == "image")
+    futuro = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    cliente.update_returning(
+        "decifra_events",
+        {"job_id": f"eq.{job_id}", "id": f"eq.{imagem.id}"},
+        {"processing_status": "processing", "leased_until": futuro},
+    )
+
+    resultado = client.post(f"/api/jobs/{job_id}/tick").json()
+    assert resultado["restantes"] >= 1, "a imagem reservada não pode sumir da conta"
+    assert db.get_job(job_id).status == JobStatus.PROCESSING
+
+
 async def test_agendamento_continua_o_trabalho_com_o_app_fechado(nuvem, client):
     cliente, _provedor, make_zip = nuvem
     zip_path = make_zip(CHAT, ARQUIVOS)
